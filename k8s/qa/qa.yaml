@@ -1,0 +1,93 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: qa-mongo-pvc
+  namespace: qa
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: qa-mongo
+  namespace: qa
+spec:
+  selector:
+    app: mongo
+  ports:
+    - port: 27017
+      targetPort: 27017
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qa-mongo
+  namespace: qa
+spec:
+  selector:
+    matchLabels:
+      app: mongo
+  template:
+    metadata:
+      labels:
+        app: mongo
+    spec:
+      containers:
+        - name: qa-mongo
+          image: mongo
+          ports:
+            - containerPort: 27017
+          volumeMounts:
+            - name: storage
+              mountPath: /data/db
+      volumes:
+        - name: storage
+          persistentVolumeClaim:
+            claimName: qa-mongo-pvc
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: todolist
+  namespace: qa
+
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: todolist
+  template:
+    metadata:
+      labels:
+        app: todolist
+    spec:
+      containers:
+        - name: todolist
+          image: todo:1.0
+          ports:
+            - containerPort: 4000
+          env:
+            - name: NODE_ENV
+              value: qa
+            - name: mongoDbUrl
+              value: mongodb://qa-mongo:27017/todolistDb_qa
+          imagePullPolicy: IfNotPresent
+---          
+apiVersion: v1
+kind: Service
+metadata:
+  name: todolist
+  namespace: qa
+spec:
+  selector:
+    app: todolist
+  ports:
+    - port: 4000
+      targetPort: 4000
+  type: NodePort
+---

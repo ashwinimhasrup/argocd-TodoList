@@ -1,0 +1,93 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: staging-mongo-pvc
+  namespace: staging
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: staging-mongo
+  namespace: staging
+spec:
+  selector:
+    app: mongo
+  ports:
+    - port: 27017
+      targetPort: 27017
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: staging-mongo
+  namespace: staging
+spec:
+  selector:
+    matchLabels:
+      app: mongo
+  template:
+    metadata:
+      labels:
+        app: mongo
+    spec:
+      containers:
+        - name: staging-mongo
+          image: mongo
+          ports:
+            - containerPort: 27017
+          volumeMounts:
+            - name: storage
+              mountPath: /data/db
+      volumes:
+        - name: storage
+          persistentVolumeClaim:
+            claimName: staging-mongo-pvc
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: todolist
+  namespace: staging
+
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: todolist
+  template:
+    metadata:
+      labels:
+        app: todolist
+    spec:
+      containers:
+        - name: todolist
+          image: todo:1.0
+          ports:
+            - containerPort: 4000
+          env:
+            - name: NODE_ENV
+              value: staging
+            - name: mongoDbUrl
+              value: mongodb://staging-mongo:27017/todolistDb_staging
+          imagePullPolicy: IfNotPresent
+---          
+apiVersion: v1
+kind: Service
+metadata:
+  name: todolist
+  namespace: staging
+spec:
+  selector:
+    app: todolist
+  ports:
+    - port: 4000
+      targetPort: 4000
+  type: NodePort
+---

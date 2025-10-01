@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: todolist
-          image: todo:1.0
+          image: ashwini73/todo:f2a9f0776e859ecd4d992e082742b9d60d539104
           ports:
             - containerPort: 4000
           env:

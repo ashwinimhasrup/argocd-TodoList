@@ -8,7 +8,8 @@ on:
 env:
   DOCKER_REGISTRY: docker.io
   IMAGE_NAME: ashwini73/todolist-app
-  MANIFEST_REPO: ashwini73/argocd-TodoList
+  MANIFEST_REPO: ashwinimhasrup/argocd-TodoList
+  # Change MANIFEST_REPO to match your actual GitHub repository
 
 jobs:
   build-and-push:
@@ -52,12 +53,10 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Checkout manifest repository
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          repository: ${{ env.MANIFEST_REPO }}
           token: ${{ secrets.GIT_TOKEN }}
-          ref: HEAD
 
       - name: Update image tag in deployment manifest
         run: |
@@ -65,14 +64,15 @@ jobs:
           sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
           sudo chmod +x /usr/bin/yq
           
-          # Update the image tag in your deployment file (adjust the path if needed)
-          yq eval '.spec.template.spec.containers[0].image = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push.outputs.image-tag }}"' -i k8s/deployment.yaml
+          # Update the image tag in nodetodo.yml for dev environment
+          # Adjust the path based on which environment you want to update
+          yq eval '.spec.template.spec.containers[0].image = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push.outputs.image-tag }}"' -i k8s/dev/nodetodo.yml
 
       - name: Commit and push changes
         run: |
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
-          git add k8s/
+          git add k8s/dev/nodetodo.yml
           git diff --staged --quiet || git commit -m "chore: update image to ${{ needs.build-and-push.outputs.image-tag }}"
           git push
 

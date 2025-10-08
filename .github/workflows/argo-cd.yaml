@@ -73,6 +73,7 @@ jobs:
       - name: Checkout manifest repository
         uses: actions/checkout@v4
         with:
+          repository: ${{ env.MANIFEST_REPO }}
           token: ${{ secrets.GIT_TOKEN }}
           fetch-depth: 0
 
@@ -142,6 +143,7 @@ jobs:
       - name: Checkout manifest repository
         uses: actions/checkout@v4
         with:
+          repository: ${{ env.MANIFEST_REPO }}
           token: ${{ secrets.GIT_TOKEN }}
           fetch-depth: 0
 
@@ -211,6 +213,7 @@ jobs:
       - name: Checkout manifest repository
         uses: actions/checkout@v4
         with:
+          repository: ${{ env.MANIFEST_REPO }}
           token: ${{ secrets.GIT_TOKEN }}
           fetch-depth: 0
 
@@ -282,6 +285,7 @@ jobs:
       - name: Checkout manifest repository
         uses: actions/checkout@v4
         with:
+          repository: ${{ env.MANIFEST_REPO }}
           token: ${{ secrets.GIT_TOKEN }}
           fetch-depth: 0
 

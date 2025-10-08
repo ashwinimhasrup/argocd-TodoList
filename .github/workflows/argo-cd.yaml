@@ -64,9 +64,8 @@ jobs:
           sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
           sudo chmod +x /usr/bin/yq
           
-          # Update the image tag in nodetodo.yml for dev environment
-          # Adjust the path based on which environment you want to update
-          yq eval '.spec.template.spec.containers[0].image = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push.outputs.image-tag }}"' -i k8s/dev/nodetodo.yml
+          # Update the image tag in dev.yaml for dev environment
+          yq eval '.spec.template.spec.containers[0].image = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push.outputs.image-tag }}"' -i k8s/dev/dev.yaml
 
       - name: Commit and push changes
         run: |

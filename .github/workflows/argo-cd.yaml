@@ -4,6 +4,19 @@ on:
   push:
     branches:
       - main
+      - develop
+      - 'feature/**'
+      - 'release/**'
+      - 'hotfix/**'
+    tags:
+      - 'v*'
+
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deploy environment manually'
+        required: true
+        default: 'dev'
 
 env:
   DOCKER_REGISTRY: docker.io
@@ -50,37 +63,59 @@ jobs:
   update-manifests:
     needs: build-and-push
     runs-on: ubuntu-latest
-    
+
     steps:
-      - name: Checkout repository
+      - name: Checkout manifests repository
         uses: actions/checkout@v4
         with:
+          repository: ${{ env.MANIFEST_REPO }}
           token: ${{ secrets.GIT_TOKEN }}
-          fetch-depth: 0  # Fetch all history for proper rebasing
+          fetch-depth: 0
 
-      - name: Pull latest changes
+      - name: Configure git
         run: |
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
-          git pull origin main --rebase
 
-      - name: Update image tag in deployment manifest
+      - name: Install yq
         run: |
-          # Install yq for YAML processing
           sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
           sudo chmod +x /usr/bin/yq
+
+      - name: Determine environment
+        id: env-select
+        run: |
+          if [[ "${GITHUB_REF}" == refs/heads/feature/* || "${GITHUB_REF}" == refs/heads/hotfix/* ]]; then
+            echo "env=dev" >> $GITHUB_OUTPUT
+          elif [[ "${GITHUB_REF}" == refs/heads/develop ]]; then
+            echo "env=qa" >> $GITHUB_OUTPUT
+          elif [[ "${GITHUB_REF}" == refs/heads/release/* ]]; then
+            echo "env=staging" >> $GITHUB_OUTPUT
+          elif [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            echo "env=prod" >> $GITHUB_OUTPUT
+          else
+            echo "env=dev" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update image tag in manifest
+        run: |
+          ENVIRONMENT=${{ steps.env-select.outputs.env }}
+          IMAGE="${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push.outputs.image-tag }}"
           
-          # Update the image tag in dev.yaml for dev environment
-          yq eval '.spec.template.spec.containers[0].image = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push.outputs.image-tag }}"' -i k8s/dev/dev.yaml
+          echo "🧩 Updating environment: $ENVIRONMENT"
+          echo "📦 Image: $IMAGE"
+          
+          yq eval ".spec.template.spec.containers[0].image = \"$IMAGE\"" -i k8s/${ENVIRONMENT}/${ENVIRONMENT}.yaml
 
       - name: Commit and push changes
         run: |
-          git add k8s/dev/dev.yaml
-          git diff --staged --quiet || git commit -m "chore: update image to ${{ needs.build-and-push.outputs.image-tag }}"
+          ENVIRONMENT=${{ steps.env-select.outputs.env }}
+          git add k8s/${ENVIRONMENT}/${ENVIRONMENT}.yaml
+          git diff --staged --quiet || git commit -m "chore(${ENVIRONMENT}): update image to ${{ needs.build-and-push.outputs.image-tag }}"
           git push origin main
 
       - name: ArgoCD Auto-Sync Notification
         run: |
-          echo "✅ Manifests updated successfully!"
-          echo "🔄 ArgoCD will automatically sync the changes to namespace: argo-dev"
+          echo "✅ Manifests updated successfully for environment: ${{ steps.env-select.outputs.env }}"
+          echo "🔄 ArgoCD will automatically sync changes for namespace: argo-${{ steps.env-select.outputs.env }}"
           echo "📦 New image: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push.outputs.image-tag }}"

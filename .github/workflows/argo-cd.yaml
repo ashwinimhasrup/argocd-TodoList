@@ -9,7 +9,6 @@ env:
   DOCKER_REGISTRY: docker.io
   IMAGE_NAME: ashwini73/todolist-app
   MANIFEST_REPO: ashwinimhasrup/argocd-TodoList
-  # Change MANIFEST_REPO to match your actual GitHub repository
 
 jobs:
   build-and-push:

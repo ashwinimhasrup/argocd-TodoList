@@ -7,8 +7,8 @@ on:
 
 env:
   DOCKER_REGISTRY: docker.io
-  IMAGE_NAME: your-dockerhub-username/todolist-app
-  MANIFEST_REPO: ashwinimhasrup/argocd-TodoList
+  IMAGE_NAME: ashwini73/todolist-app
+  MANIFEST_REPO: ashwini73/argocd-TodoList
 
 jobs:
   build-and-push:

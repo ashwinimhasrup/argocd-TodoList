@@ -1,5 +1,4 @@
 name: Build and Deploy with ArgoCD
-
 on:
   push:
     branches:
@@ -27,7 +26,6 @@ on:
         description: 'Deploy environment'
         required: true
         default: 'dev'
-
 env:
   NODE_VERSION: '18'
   DOCKER_REGISTRY: docker.io

@@ -12,7 +12,7 @@ spec:
   template:
     spec:
       containers:
-        - image: docker.io/ashwini73/todolist-app:11241ba
+        - image: docker.io/ashwini73/todolist-app:1a430da
 ---
 apiVersion: v1
 kind: Service
@@ -28,7 +28,7 @@ spec:
   template:
     spec:
       containers:
-        - image: docker.io/ashwini73/todolist-app:11241ba
+        - image: docker.io/ashwini73/todolist-app:1a430da
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -46,7 +46,7 @@ spec:
     spec:
       containers:
         - name: qa-mongo
-          image: docker.io/ashwini73/todolist-app:11241ba
+          image: docker.io/ashwini73/todolist-app:1a430da
           ports:
             - containerPort: 27017
           volumeMounts:
@@ -74,7 +74,7 @@ spec:
     spec:
       containers:
         - name: todolist
-          image: docker.io/ashwini73/todolist-app:11241ba
+          image: docker.io/ashwini73/todolist-app:1a430da
           ports:
             - containerPort: 4000
           env:
@@ -99,10 +99,10 @@ spec:
   template:
     spec:
       containers:
-        - image: docker.io/ashwini73/todolist-app:11241ba
+        - image: docker.io/ashwini73/todolist-app:1a430da
 ---
 spec:
   template:
     spec:
       containers:
-        - image: docker.io/ashwini73/todolist-app:11241ba
+        - image: docker.io/ashwini73/todolist-app:1a430da

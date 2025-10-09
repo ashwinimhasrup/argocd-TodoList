@@ -10,13 +10,13 @@ on:
       - 'hotfix/**'
     tags:
       - 'v*'
+
   pull_request:
     branches:
       - develop
       - main
     types: [opened, synchronize, reopened]
-  pull_request_review_comment:
-    types: [created]
+
   workflow_dispatch:
     inputs:
       environment:
@@ -31,7 +31,45 @@ env:
   MANIFEST_REPO: ashwinimhasrup/argocd-TodoList
 
 jobs:
-  deploy-dev:
+  build-for-pr:
+    name: Build Docker Image (CI only for PR)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set image tag
+        id: set-tag
+        run: |
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+          echo "tag=${SHORT_SHA}" >> $GITHUB_OUTPUT
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.DOCKER_REGISTRY }}
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build Docker image (no push)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          tags: |
+            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}
+
+      - name: CI Only Message
+        run: |
+          echo "✅ Docker image built successfully for PR #${{ github.event.pull_request.number }}"
+          echo "🧪 code review and testing is done."
+
+  build-and-push-dev:
     runs-on: ubuntu-latest
     if: |
       startsWith(github.ref, 'refs/heads/hotfix/') ||
@@ -72,39 +110,40 @@ jobs:
           cache-to: type=registry,ref=${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
 
   update-manifests-dev:
-    needs: deploy-dev
+    needs: build-and-push-dev
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout manifest repo
+      - name: Checkout manifests repo
         uses: actions/checkout@v4
         with:
-          repository: ${{ env.MANIFEST_REPO }}
           token: ${{ secrets.GIT_TOKEN }}
           fetch-depth: 0
-          ref: develop   # Change if your manifest repo uses 'main'
 
-      - name: Update image tag in dev manifest
-        run: |
-          sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
-          sudo chmod +x /usr/bin/yq
-          yq eval '.spec.template.spec.containers[0].image = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.deploy-dev.outputs.image-tag }}"' -i k8s/dev/dev.yaml
-
-      - name: Commit and push changes
+      - name: Pull latest changes
         run: |
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
+          git pull origin main --rebase
+
+      - name: Update image tag in Dev manifest
+        run: |
+          sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
+          sudo chmod +x /usr/bin/yq
+          yq eval '.spec.template.spec.containers[0].image = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-dev.outputs.image-tag }}"' -i k8s/dev/dev.yaml
+
+      - name: Commit and push changes
+        run: |
           git add k8s/dev/dev.yaml
-          git diff --staged --quiet || git commit -m "chore: update dev image to ${{ needs.deploy-dev.outputs.image-tag }}"
-          git push origin ${{ github.ref_name }}
+          git diff --staged --quiet || git commit -m "chore: update image to ${{ needs.build-and-push-dev.outputs.image-tag }}"
+          git push origin main
 
       - name: ArgoCD Auto-Sync Notification
         run: |
-          echo "✅ Dev manifests updated successfully!"
-          echo "🔄 ArgoCD will automatically sync changes to the dev namespace."
-          echo "📦 New image: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.deploy-dev.outputs.image-tag }}"
+          echo "✅ Dev manifest updated successfully!"
+          echo "🔄 ArgoCD will auto-sync changes to namespace: argo-dev"
+          echo "📦 Image: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-dev.outputs.image-tag }}"
 
-  deploy-qa:
+  build-and-push-qa:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/develop'
     outputs:
@@ -140,44 +179,44 @@ jobs:
             ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
 
   update-manifests-qa:
-    needs: deploy-qa
+    needs: build-and-push-qa
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout manifest repository
+      - name: Checkout manifests repo
         uses: actions/checkout@v4
         with:
-          repository: ${{ env.MANIFEST_REPO }}
           token: ${{ secrets.GIT_TOKEN }}
           fetch-depth: 0
-          ref: develop
 
-      - name: Update image tag in QA manifest
-        run: |
-          sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
-          sudo chmod +x /usr/bin/yq
-          yq eval '.spec.template.spec.containers[0].image = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.deploy-qa.outputs.image-tag }}"' -i k8s/qa/qa.yaml
-
-      - name: Commit and push changes
+      - name: Pull latest changes
         run: |
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
+          git pull origin main --rebase
+
+      - name: Update QA manifest
+        run: |
+          sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
+          sudo chmod +x /usr/bin/yq
+          yq eval '.spec.template.spec.containers[0].image = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-qa.outputs.image-tag }}"' -i k8s/qa/qa.yaml
+
+      - name: Commit and push changes
+        run: |
           git add k8s/qa/qa.yaml
-          git diff --staged --quiet || git commit -m "chore: update QA image to ${{ needs.deploy-qa.outputs.image-tag }}"
-          git push origin ${{ github.ref_name }}
+          git diff --staged --quiet || git commit -m "chore: update QA image to ${{ needs.build-and-push-qa.outputs.image-tag }}"
+          git push origin main
 
       - name: ArgoCD Auto-Sync Notification
         run: |
-          echo "✅ QA manifests updated successfully!"
-          echo "🔄 ArgoCD will automatically sync changes to the QA namespace."
-          echo "📦 New image: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.deploy-qa.outputs.image-tag }}"
+          echo "✅ QA manifest updated!"
+          echo "🔄 ArgoCD will auto-sync to namespace: argo-qa"
+          echo "📦 Image: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-qa.outputs.image-tag }}"
 
-  deploy-staging:
+  build-and-push-staging:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/heads/release/')
     outputs:
       image-tag: ${{ steps.set-tag.outputs.tag }}
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -204,44 +243,39 @@ jobs:
             ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
 
   update-manifests-staging:
-    needs: deploy-staging
+    needs: build-and-push-staging
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout manifest repository
+      - name: Checkout manifests repo
         uses: actions/checkout@v4
         with:
-          repository: ${{ env.MANIFEST_REPO }}
           token: ${{ secrets.GIT_TOKEN }}
           fetch-depth: 0
-          ref: develop
-
+      - name: Pull latest changes
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+          git pull origin main --rebase
       - name: Update staging manifest
         run: |
           sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
           sudo chmod +x /usr/bin/yq
-          yq eval '.spec.template.spec.containers[0].image = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.deploy-staging.outputs.image-tag }}"' -i k8s/staging/staging.yaml
-
-      - name: Commit and push
+          yq eval '.spec.template.spec.containers[0].image = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-staging.outputs.image-tag }}"' -i k8s/staging/staging.yaml
+      - name: Commit and push changes
         run: |
-          git config --global user.name "GitHub Actions Bot"
-          git config --global user.email "actions@github.com"
           git add k8s/staging/staging.yaml
-          git diff --staged --quiet || git commit -m "chore: update staging image to ${{ needs.deploy-staging.outputs.image-tag }}"
-          git push origin ${{ github.ref_name }}
-
+          git diff --staged --quiet || git commit -m "chore: update staging image to ${{ needs.build-and-push-staging.outputs.image-tag }}"
+          git push origin main
       - name: ArgoCD Auto-Sync Notification
         run: |
-          echo "✅ Staging manifests updated successfully!"
-          echo "🔄 ArgoCD will automatically sync changes to the staging namespace."
-          echo "📦 New image: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.deploy-staging.outputs.image-tag }}"
+          echo "✅ Staging manifest updated!"
+          echo "🔄 ArgoCD will auto-sync to namespace: argo-staging"
 
-  deploy-prod:
+  build-and-push-prod:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     outputs:
       image-tag: ${{ steps.set-tag.outputs.tag }}
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -268,34 +302,30 @@ jobs:
             ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
 
   update-manifests-prod:
-    needs: deploy-prod
+    needs: build-and-push-prod
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout manifest repository
+      - name: Checkout manifests repo
         uses: actions/checkout@v4
         with:
-          repository: ${{ env.MANIFEST_REPO }}
           token: ${{ secrets.GIT_TOKEN }}
           fetch-depth: 0
-          ref: main
-
+      - name: Pull latest changes
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+          git pull origin main --rebase
       - name: Update prod manifest
         run: |
           sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
           sudo chmod +x /usr/bin/yq
-          yq eval '.spec.template.spec.containers[0].image = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.deploy-prod.outputs.image-tag }}"' -i k8s/prod/prod.yaml
-
-      - name: Commit and push
+          yq eval '.spec.template.spec.containers[0].image = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-prod.outputs.image-tag }}"' -i k8s/prod/prod.yaml
+      - name: Commit and push changes
         run: |
-          git config --global user.name "GitHub Actions Bot"
-          git config --global user.email "actions@github.com"
           git add k8s/prod/prod.yaml
-          git diff --staged --quiet || git commit -m "chore: update prod image to ${{ needs.deploy-prod.outputs.image-tag }}"
-          git push origin ${{ github.ref_name }}
-
+          git diff --staged --quiet || git commit -m "chore: update prod image to ${{ needs.build-and-push-prod.outputs.image-tag }}"
+          git push origin main
       - name: ArgoCD Auto-Sync Notification
         run: |
-          echo "✅ Production manifests updated successfully!"
-          echo "🔄 ArgoCD will automatically sync changes to the production namespace."
-          echo "📦 New image: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.deploy-prod.outputs.image-tag }}"
+          echo "✅ Prod manifest updated!"
+          echo "🔄 ArgoCD will auto-sync to namespace: argo-prod"

@@ -2,7 +2,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: staging-mongo-pvc
-  namespace: staging
+  namespace: argo-staging
 spec:
   accessModes:
     - ReadWriteOnce
@@ -18,7 +18,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: staging-mongo
-  namespace: staging
+  namespace: argo-staging
 spec:
   selector:
     app: mongo
@@ -34,7 +34,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: staging-mongo
-  namespace: staging
+  namespace: argo-staging
 spec:
   selector:
     matchLabels:
@@ -61,7 +61,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: todolist
-  namespace: staging
+  namespace: argo-staging
 spec:
   replicas: 1
   selector:
@@ -88,7 +88,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: todolist
-  namespace: staging
+  namespace: argo-staging
 spec:
   selector:
     app: todolist

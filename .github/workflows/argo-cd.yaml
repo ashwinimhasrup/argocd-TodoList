@@ -32,7 +32,7 @@ env:
 
 jobs:
   build-for-pr:
-    name: pull_request (CI only for PR)
+    name: Build Docker Image (CI only for PR)
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
 
@@ -49,10 +49,10 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to Docker Registry
+      - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.DOCKER_REGISTRY }}
+          registry: docker.io
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
@@ -62,12 +62,12 @@ jobs:
           context: .
           push: false
           tags: |
-            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}
+            docker.io/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}
 
       - name: CI Only Message
         run: |
           echo "✅ Docker image built successfully for PR #${{ github.event.pull_request.number }}"
-          echo "🧪 code review and testing is done."
+          echo "🧪 Code review and testing is done."
 
   build-and-push-dev:
     runs-on: ubuntu-latest
@@ -95,27 +95,34 @@ jobs:
         run: |
           SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
           echo "tag=${SHORT_SHA}" >> $GITHUB_OUTPUT
+          echo "🏷️ Image tag: ${SHORT_SHA}"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to Docker Registry
+      - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.DOCKER_REGISTRY }}
+          registry: docker.io
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build and push Docker image
+      - name: Build and push Docker image to Docker Hub
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
           tags: |
-            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}
-            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-          cache-from: type=registry,ref=${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
-          cache-to: type=registry,ref=${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
+            docker.io/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}
+            docker.io/${{ env.IMAGE_NAME }}:dev-latest
+          cache-from: type=registry,ref=docker.io/${{ env.IMAGE_NAME }}:buildcache
+          cache-to: type=registry,ref=docker.io/${{ env.IMAGE_NAME }}:buildcache,mode=max
+
+      - name: Image pushed notification
+        run: |
+          echo "✅ Docker image pushed to Docker Hub successfully!"
+          echo "📦 Image: docker.io/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}"
+          echo "🔖 Also tagged as: dev-latest"
 
   update-manifests-dev:
     needs: build-and-push-dev
@@ -131,8 +138,8 @@ jobs:
 
       - name: Configure Git
         run: |
-          git config --global user.name "GitHub Actions Bot"
-          git config --global user.email "actions@github.com"
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
 
       - name: Pull latest changes
         run: |
@@ -142,7 +149,7 @@ jobs:
         run: |
           sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
           sudo chmod +x /usr/bin/yq
-          yq eval '.spec.template.spec.containers[0].image = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-dev.outputs.image-tag }}"' -i k8s/dev/dev.yaml
+          yq eval '.spec.template.spec.containers[0].image = "docker.io/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-dev.outputs.image-tag }}"' -i k8s/dev/dev.yaml
 
       - name: Commit and push changes
         run: |
@@ -155,7 +162,7 @@ jobs:
           echo "✅ Dev manifest updated successfully!"
           echo "🌿 Branch: ${{ needs.build-and-push-dev.outputs.branch-name }}"
           echo "🔄 ArgoCD will auto-sync changes to namespace: argo-dev"
-          echo "📦 Image: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-dev.outputs.image-tag }}"
+          echo "📦 Image: docker.io/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-dev.outputs.image-tag }}"
 
   build-and-push-qa:
     runs-on: ubuntu-latest
@@ -180,25 +187,34 @@ jobs:
         run: |
           SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
           echo "tag=${SHORT_SHA}" >> $GITHUB_OUTPUT
+          echo "🏷️ Image tag: ${SHORT_SHA}"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to Docker Registry
+      - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.DOCKER_REGISTRY }}
+          registry: docker.io
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build and push Docker image
+      - name: Build and push Docker image to Docker Hub
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
           tags: |
-            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}
-            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            docker.io/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}
+            docker.io/${{ env.IMAGE_NAME }}:qa-latest
+          cache-from: type=registry,ref=docker.io/${{ env.IMAGE_NAME }}:buildcache
+          cache-to: type=registry,ref=docker.io/${{ env.IMAGE_NAME }}:buildcache,mode=max
+
+      - name: Image pushed notification
+        run: |
+          echo "✅ Docker image pushed to Docker Hub successfully!"
+          echo "📦 Image: docker.io/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}"
+          echo "🔖 Also tagged as: qa-latest"
 
   update-manifests-qa:
     needs: build-and-push-qa
@@ -214,8 +230,8 @@ jobs:
 
       - name: Configure Git
         run: |
-          git config --global user.name "GitHub Actions Bot"
-          git config --global user.email "actions@github.com"
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
 
       - name: Pull latest changes
         run: |
@@ -225,7 +241,7 @@ jobs:
         run: |
           sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
           sudo chmod +x /usr/bin/yq
-          yq eval '.spec.template.spec.containers[0].image = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-qa.outputs.image-tag }}"' -i k8s/qa/qa.yaml
+          yq eval '.spec.template.spec.containers[0].image = "docker.io/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-qa.outputs.image-tag }}"' -i k8s/qa/qa.yaml
 
       - name: Commit and push changes
         run: |
@@ -238,7 +254,7 @@ jobs:
           echo "✅ QA manifest updated!"
           echo "🌿 Branch: ${{ needs.build-and-push-qa.outputs.branch-name }}"
           echo "🔄 ArgoCD will auto-sync to namespace: argo-qa"
-          echo "📦 Image: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-qa.outputs.image-tag }}"
+          echo "📦 Image: docker.io/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-qa.outputs.image-tag }}"
 
   build-and-push-staging:
     runs-on: ubuntu-latest
@@ -262,25 +278,34 @@ jobs:
         run: |
           SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
           echo "tag=${SHORT_SHA}" >> $GITHUB_OUTPUT
+          echo "🏷️ Image tag: ${SHORT_SHA}"
       
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       
-      - name: Log in to Docker Registry
+      - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.DOCKER_REGISTRY }}
+          registry: docker.io
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
       
-      - name: Build and push Docker image
+      - name: Build and push Docker image to Docker Hub
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
           tags: |
-            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}
-            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            docker.io/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}
+            docker.io/${{ env.IMAGE_NAME }}:staging-latest
+          cache-from: type=registry,ref=docker.io/${{ env.IMAGE_NAME }}:buildcache
+          cache-to: type=registry,ref=docker.io/${{ env.IMAGE_NAME }}:buildcache,mode=max
+
+      - name: Image pushed notification
+        run: |
+          echo "✅ Docker image pushed to Docker Hub successfully!"
+          echo "📦 Image: docker.io/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}"
+          echo "🔖 Also tagged as: staging-latest"
 
   update-manifests-staging:
     needs: build-and-push-staging
@@ -296,8 +321,8 @@ jobs:
       
       - name: Configure Git
         run: |
-          git config --global user.name "GitHub Actions Bot"
-          git config --global user.email "actions@github.com"
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
       
       - name: Pull latest changes
         run: |
@@ -307,7 +332,7 @@ jobs:
         run: |
           sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
           sudo chmod +x /usr/bin/yq
-          yq eval '.spec.template.spec.containers[0].image = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-staging.outputs.image-tag }}"' -i k8s/staging/staging.yaml
+          yq eval '.spec.template.spec.containers[0].image = "docker.io/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-staging.outputs.image-tag }}"' -i k8s/staging/staging.yaml
       
       - name: Commit and push changes
         run: |
@@ -320,6 +345,7 @@ jobs:
           echo "✅ Staging manifest updated!"
           echo "🌿 Branch: ${{ needs.build-and-push-staging.outputs.branch-name }}"
           echo "🔄 ArgoCD will auto-sync to namespace: argo-staging"
+          echo "📦 Image: docker.io/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-staging.outputs.image-tag }}"
 
   build-and-push-prod:
     runs-on: ubuntu-latest
@@ -335,25 +361,35 @@ jobs:
         run: |
           SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
           echo "tag=${SHORT_SHA}" >> $GITHUB_OUTPUT
+          echo "🏷️ Image tag: ${SHORT_SHA}"
       
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       
-      - name: Log in to Docker Registry
+      - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.DOCKER_REGISTRY }}
+          registry: docker.io
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
       
-      - name: Build and push Docker image
+      - name: Build and push Docker image to Docker Hub
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
           tags: |
-            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}
-            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            docker.io/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}
+            docker.io/${{ env.IMAGE_NAME }}:prod-latest
+            docker.io/${{ env.IMAGE_NAME }}:latest
+          cache-from: type=registry,ref=docker.io/${{ env.IMAGE_NAME }}:buildcache
+          cache-to: type=registry,ref=docker.io/${{ env.IMAGE_NAME }}:buildcache,mode=max
+
+      - name: Image pushed notification
+        run: |
+          echo "✅ Docker image pushed to Docker Hub successfully!"
+          echo "📦 Image: docker.io/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}"
+          echo "🔖 Also tagged as: prod-latest, latest"
 
   update-manifests-prod:
     needs: build-and-push-prod
@@ -369,8 +405,8 @@ jobs:
       
       - name: Configure Git
         run: |
-          git config --global user.name "GitHub Actions Bot"
-          git config --global user.email "actions@github.com"
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
       
       - name: Pull latest changes
         run: |
@@ -380,7 +416,7 @@ jobs:
         run: |
           sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
           sudo chmod +x /usr/bin/yq
-          yq eval '.spec.template.spec.containers[0].image = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-prod.outputs.image-tag }}"' -i k8s/prod/prod.yaml
+          yq eval '.spec.template.spec.containers[0].image = "docker.io/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-prod.outputs.image-tag }}"' -i k8s/prod/prod.yaml
       
       - name: Commit and push changes
         run: |
@@ -393,3 +429,4 @@ jobs:
           echo "✅ Prod manifest updated!"
           echo "🌿 Branch: main"
           echo "🔄 ArgoCD will auto-sync to namespace: argo-prod"
+          echo "📦 Image: docker.io/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-prod.outputs.image-tag }}"

@@ -77,10 +77,18 @@ jobs:
       (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'dev')
     outputs:
       image-tag: ${{ steps.set-tag.outputs.tag }}
+      branch-name: ${{ steps.extract-branch.outputs.branch }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Extract branch name
+        id: extract-branch
+        run: |
+          BRANCH_NAME=${GITHUB_REF#refs/heads/}
+          echo "branch=${BRANCH_NAME}" >> $GITHUB_OUTPUT
+          echo "📌 Source branch: ${BRANCH_NAME}"
 
       - name: Set image tag
         id: set-tag
@@ -113,17 +121,22 @@ jobs:
     needs: build-and-push-dev
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout manifests repo
+      - name: Checkout manifests repo (same branch as source)
         uses: actions/checkout@v4
         with:
+          repository: ${{ env.MANIFEST_REPO }}
           token: ${{ secrets.GIT_TOKEN }}
+          ref: ${{ needs.build-and-push-dev.outputs.branch-name }}
           fetch-depth: 0
 
-      - name: Pull latest changes
+      - name: Configure Git
         run: |
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
-          git pull origin main --rebase
+
+      - name: Pull latest changes
+        run: |
+          git pull origin ${{ needs.build-and-push-dev.outputs.branch-name }} --no-rebase || true
 
       - name: Update image tag in Dev manifest
         run: |
@@ -134,12 +147,13 @@ jobs:
       - name: Commit and push changes
         run: |
           git add k8s/dev/dev.yaml
-          git diff --staged --quiet || git commit -m "chore: update image to ${{ needs.build-and-push-dev.outputs.image-tag }}"
-          git push origin main
+          git diff --staged --quiet || git commit -m "chore: update dev image to ${{ needs.build-and-push-dev.outputs.image-tag }}"
+          git push origin ${{ needs.build-and-push-dev.outputs.branch-name }}
 
       - name: ArgoCD Auto-Sync Notification
         run: |
           echo "✅ Dev manifest updated successfully!"
+          echo "🌿 Branch: ${{ needs.build-and-push-dev.outputs.branch-name }}"
           echo "🔄 ArgoCD will auto-sync changes to namespace: argo-dev"
           echo "📦 Image: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-dev.outputs.image-tag }}"
 
@@ -148,10 +162,18 @@ jobs:
     if: github.ref == 'refs/heads/develop'
     outputs:
       image-tag: ${{ steps.set-tag.outputs.tag }}
+      branch-name: ${{ steps.extract-branch.outputs.branch }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Extract branch name
+        id: extract-branch
+        run: |
+          BRANCH_NAME=${GITHUB_REF#refs/heads/}
+          echo "branch=${BRANCH_NAME}" >> $GITHUB_OUTPUT
+          echo "📌 Source branch: ${BRANCH_NAME}"
 
       - name: Set image tag
         id: set-tag
@@ -182,17 +204,22 @@ jobs:
     needs: build-and-push-qa
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout manifests repo
+      - name: Checkout manifests repo (develop branch)
         uses: actions/checkout@v4
         with:
+          repository: ${{ env.MANIFEST_REPO }}
           token: ${{ secrets.GIT_TOKEN }}
+          ref: ${{ needs.build-and-push-qa.outputs.branch-name }}
           fetch-depth: 0
 
-      - name: Pull latest changes
+      - name: Configure Git
         run: |
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
-          git pull origin main --rebase
+
+      - name: Pull latest changes
+        run: |
+          git pull origin ${{ needs.build-and-push-qa.outputs.branch-name }} --no-rebase || true
 
       - name: Update QA manifest
         run: |
@@ -204,11 +231,12 @@ jobs:
         run: |
           git add k8s/qa/qa.yaml
           git diff --staged --quiet || git commit -m "chore: update QA image to ${{ needs.build-and-push-qa.outputs.image-tag }}"
-          git push origin main
+          git push origin ${{ needs.build-and-push-qa.outputs.branch-name }}
 
       - name: ArgoCD Auto-Sync Notification
         run: |
           echo "✅ QA manifest updated!"
+          echo "🌿 Branch: ${{ needs.build-and-push-qa.outputs.branch-name }}"
           echo "🔄 ArgoCD will auto-sync to namespace: argo-qa"
           echo "📦 Image: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-qa.outputs.image-tag }}"
 
@@ -217,22 +245,34 @@ jobs:
     if: startsWith(github.ref, 'refs/heads/release/')
     outputs:
       image-tag: ${{ steps.set-tag.outputs.tag }}
+      branch-name: ${{ steps.extract-branch.outputs.branch }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+      
+      - name: Extract branch name
+        id: extract-branch
+        run: |
+          BRANCH_NAME=${GITHUB_REF#refs/heads/}
+          echo "branch=${BRANCH_NAME}" >> $GITHUB_OUTPUT
+          echo "📌 Source branch: ${BRANCH_NAME}"
+      
       - name: Set image tag
         id: set-tag
         run: |
           SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
           echo "tag=${SHORT_SHA}" >> $GITHUB_OUTPUT
+      
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+      
       - name: Log in to Docker Registry
         uses: docker/login-action@v3
         with:
           registry: ${{ env.DOCKER_REGISTRY }}
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
+      
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
@@ -246,29 +286,39 @@ jobs:
     needs: build-and-push-staging
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout manifests repo
+      - name: Checkout manifests repo (release branch)
         uses: actions/checkout@v4
         with:
+          repository: ${{ env.MANIFEST_REPO }}
           token: ${{ secrets.GIT_TOKEN }}
+          ref: ${{ needs.build-and-push-staging.outputs.branch-name }}
           fetch-depth: 0
-      - name: Pull latest changes
+      
+      - name: Configure Git
         run: |
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
-          git pull origin main --rebase
+      
+      - name: Pull latest changes
+        run: |
+          git pull origin ${{ needs.build-and-push-staging.outputs.branch-name }} --no-rebase || true
+      
       - name: Update staging manifest
         run: |
           sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
           sudo chmod +x /usr/bin/yq
           yq eval '.spec.template.spec.containers[0].image = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-staging.outputs.image-tag }}"' -i k8s/staging/staging.yaml
+      
       - name: Commit and push changes
         run: |
           git add k8s/staging/staging.yaml
           git diff --staged --quiet || git commit -m "chore: update staging image to ${{ needs.build-and-push-staging.outputs.image-tag }}"
-          git push origin main
+          git push origin ${{ needs.build-and-push-staging.outputs.branch-name }}
+      
       - name: ArgoCD Auto-Sync Notification
         run: |
           echo "✅ Staging manifest updated!"
+          echo "🌿 Branch: ${{ needs.build-and-push-staging.outputs.branch-name }}"
           echo "🔄 ArgoCD will auto-sync to namespace: argo-staging"
 
   build-and-push-prod:
@@ -279,19 +329,23 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+      
       - name: Set image tag
         id: set-tag
         run: |
           SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
           echo "tag=${SHORT_SHA}" >> $GITHUB_OUTPUT
+      
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+      
       - name: Log in to Docker Registry
         uses: docker/login-action@v3
         with:
           registry: ${{ env.DOCKER_REGISTRY }}
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
+      
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
@@ -305,27 +359,37 @@ jobs:
     needs: build-and-push-prod
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout manifests repo
+      - name: Checkout manifests repo (main branch for prod)
         uses: actions/checkout@v4
         with:
+          repository: ${{ env.MANIFEST_REPO }}
           token: ${{ secrets.GIT_TOKEN }}
+          ref: main
           fetch-depth: 0
-      - name: Pull latest changes
+      
+      - name: Configure Git
         run: |
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
-          git pull origin main --rebase
+      
+      - name: Pull latest changes
+        run: |
+          git pull origin main --no-rebase || true
+      
       - name: Update prod manifest
         run: |
           sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
           sudo chmod +x /usr/bin/yq
           yq eval '.spec.template.spec.containers[0].image = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-prod.outputs.image-tag }}"' -i k8s/prod/prod.yaml
+      
       - name: Commit and push changes
         run: |
           git add k8s/prod/prod.yaml
           git diff --staged --quiet || git commit -m "chore: update prod image to ${{ needs.build-and-push-prod.outputs.image-tag }}"
           git push origin main
+      
       - name: ArgoCD Auto-Sync Notification
         run: |
           echo "✅ Prod manifest updated!"
+          echo "🌿 Branch: main"
           echo "🔄 ArgoCD will auto-sync to namespace: argo-prod"

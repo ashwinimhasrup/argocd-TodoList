@@ -1,5 +1,5 @@
 kubectl apply -f - <<EOF
-apiVersion: argoproj.io/v1alpha1
+apiVersion: "argoproj.io/v1alpha1"
 kind: Application
 metadata:
   name: argocd-apps
@@ -7,7 +7,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/ashwinimhasrup/argocd-TodoList.git
+    repoURL: https://github.com/ashwinimasrup/argocd-TodoList.git
     targetRevision: feature/test
     path: argocd-apps
   destination:

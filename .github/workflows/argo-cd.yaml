@@ -1,500 +1,500 @@
-name: Build and Deploy with ArgoCD
+# name: Build and Deploy with ArgoCD
 
-on:
-  push:
-    branches:
-      - main
-      - develop
-      - 'feature/**'
-      - 'release/**'
-      - 'hotfix/**'
-    paths-ignore:
-      - 'k8s/**'
-      - '**.md'
-      - '.gitignore'
-    tags:
-      - 'v*'
+# on:
+#   push:
+#     branches:
+#       - main
+#       - develop
+#       - 'feature/**'
+#       - 'release/**'
+#       - 'hotfix/**'
+#     paths-ignore:
+#       - 'k8s/**'
+#       - '**.md'
+#       - '.gitignore'
+#     tags:
+#       - 'v*'
 
-  pull_request:
-    branches:
-      - develop
-      - main
-    types: [opened, synchronize, reopened]
+#   pull_request:
+#     branches:
+#       - develop
+#       - main
+#     types: [opened, synchronize, reopened]
 
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Deploy environment'
-        required: true
-        default: 'dev'
+#   workflow_dispatch:
+#     inputs:
+#       environment:
+#         description: 'Deploy environment'
+#         required: true
+#         default: 'dev'
 
-env:
-  NODE_VERSION: '18'
-  DOCKER_REGISTRY: docker.io
-  IMAGE_NAME: ashwini73/todolist-app
-  MANIFEST_REPO: ashwinimhasrup/argocd-TodoList
+# env:
+#   NODE_VERSION: '18'
+#   DOCKER_REGISTRY: docker.io
+#   IMAGE_NAME: ashwini73/todolist-app
+#   MANIFEST_REPO: ashwinimhasrup/argocd-TodoList
 
-jobs:
-  build-for-pr:
-    name: pull_request (CI only for PR)
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+# jobs:
+#   build-for-pr:
+#     name: pull_request (CI only for PR)
+#     runs-on: ubuntu-latest
+#     if: github.event_name == 'pull_request'
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+#     steps:
+#       - name: Checkout code
+#         uses: actions/checkout@v4
 
-      - name: Set image tag
-        id: set-tag
-        run: |
-          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
-          echo "tag=${SHORT_SHA}" >> $GITHUB_OUTPUT
+#       - name: Set image tag
+#         id: set-tag
+#         run: |
+#           SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+#           echo "tag=${SHORT_SHA}" >> $GITHUB_OUTPUT
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+#       - name: Set up Docker Buildx
+#         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to Docker Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.DOCKER_REGISTRY }}
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
+#       - name: Log in to Docker Registry
+#         uses: docker/login-action@v3
+#         with:
+#           registry: ${{ env.DOCKER_REGISTRY }}
+#           username: ${{ secrets.DOCKER_USERNAME }}
+#           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build Docker image (no push)
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: false
-          tags: |
-            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}
+#       - name: Build Docker image (no push)
+#         uses: docker/build-push-action@v5
+#         with:
+#           context: .
+#           push: false
+#           tags: |
+#             ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}
 
-      - name: CI Only Message
-        run: |
-          echo "✅ Docker image built successfully for PR #${{ github.event.pull_request.number }}"
-          echo "🧪 Code review and testing is done."
+#       - name: CI Only Message
+#         run: |
+#           echo "✅ Docker image built successfully for PR #${{ github.event.pull_request.number }}"
+#           echo "🧪 Code review and testing is done."
 
-  build-and-push-dev:
-    runs-on: ubuntu-latest
-    if: |
-      startsWith(github.ref, 'refs/heads/hotfix/') ||
-      startsWith(github.ref, 'refs/heads/feature/') ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'dev')
-    outputs:
-      image-tag: ${{ steps.set-tag.outputs.tag }}
-      branch-name: ${{ steps.extract-branch.outputs.branch }}
+#   build-and-push-dev:
+#     runs-on: ubuntu-latest
+#     if: |
+#       startsWith(github.ref, 'refs/heads/hotfix/') ||
+#       startsWith(github.ref, 'refs/heads/feature/') ||
+#       (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'dev')
+#     outputs:
+#       image-tag: ${{ steps.set-tag.outputs.tag }}
+#       branch-name: ${{ steps.extract-branch.outputs.branch }}
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+#     steps:
+#       - name: Checkout code
+#         uses: actions/checkout@v4
 
-      - name: Extract branch name
-        id: extract-branch
-        run: |
-          BRANCH_NAME=${GITHUB_REF#refs/heads/}
-          echo "branch=${BRANCH_NAME}" >> $GITHUB_OUTPUT
-          echo "📌 Source branch: ${BRANCH_NAME}"
+#       - name: Extract branch name
+#         id: extract-branch
+#         run: |
+#           BRANCH_NAME=${GITHUB_REF#refs/heads/}
+#           echo "branch=${BRANCH_NAME}" >> $GITHUB_OUTPUT
+#           echo "📌 Source branch: ${BRANCH_NAME}"
 
-      - name: Set image tag
-        id: set-tag
-        run: |
-          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
-          echo "tag=${SHORT_SHA}" >> $GITHUB_OUTPUT
+#       - name: Set image tag
+#         id: set-tag
+#         run: |
+#           SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+#           echo "tag=${SHORT_SHA}" >> $GITHUB_OUTPUT
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+#       - name: Set up Docker Buildx
+#         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to Docker Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.DOCKER_REGISTRY }}
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
+#       - name: Log in to Docker Registry
+#         uses: docker/login-action@v3
+#         with:
+#           registry: ${{ env.DOCKER_REGISTRY }}
+#           username: ${{ secrets.DOCKER_USERNAME }}
+#           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: |
-            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}
-            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:dev-latest
-          cache-from: type=registry,ref=${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
-          cache-to: type=registry,ref=${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
+#       - name: Build and push Docker image
+#         uses: docker/build-push-action@v5
+#         with:
+#           context: .
+#           push: true
+#           tags: |
+#             ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}
+#             ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:dev-latest
+#           cache-from: type=registry,ref=${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
+#           cache-to: type=registry,ref=${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
 
-  update-manifests-dev:
-    needs: build-and-push-dev
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout manifests repo (same branch as source)
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ env.MANIFEST_REPO }}
-          token: ${{ secrets.GIT_TOKEN }}
-          ref: ${{ needs.build-and-push-dev.outputs.branch-name }}
-          fetch-depth: 0
+#   update-manifests-dev:
+#     needs: build-and-push-dev
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Checkout manifests repo (same branch as source)
+#         uses: actions/checkout@v4
+#         with:
+#           repository: ${{ env.MANIFEST_REPO }}
+#           token: ${{ secrets.GIT_TOKEN }}
+#           ref: ${{ needs.build-and-push-dev.outputs.branch-name }}
+#           fetch-depth: 0
 
-      - name: Configure Git
-        run: |
-          git config --global user.name "GitHub Actions Bot"
-          git config --global user.email "actions@github.com"
+#       - name: Configure Git
+#         run: |
+#           git config --global user.name "GitHub Actions Bot"
+#           git config --global user.email "actions@github.com"
 
-      - name: Pull latest changes
-        run: |
-          git pull origin ${{ needs.build-and-push-dev.outputs.branch-name }} --no-rebase || true
+#       - name: Pull latest changes
+#         run: |
+#           git pull origin ${{ needs.build-and-push-dev.outputs.branch-name }} --no-rebase || true
 
-      - name: Update image tag in Dev manifest
-        run: |
-          sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
-          sudo chmod +x /usr/bin/yq
-          yq eval '.spec.template.spec.containers[0].image = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-dev.outputs.image-tag }}"' -i k8s/dev/dev.yaml
+#       - name: Update image tag in Dev manifest
+#         run: |
+#           sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
+#           sudo chmod +x /usr/bin/yq
+#           yq eval '.spec.template.spec.containers[0].image = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-dev.outputs.image-tag }}"' -i k8s/dev/dev.yaml
 
-      - name: Check if there are changes
-        id: check-changes
-        run: |
-          if git diff --staged --quiet; then
-            echo "has_changes=false" >> $GITHUB_OUTPUT
-            echo "⚠️ No changes detected in manifest"
-          else
-            echo "has_changes=true" >> $GITHUB_OUTPUT
-            echo "✅ Changes detected in manifest"
-          fi
+#       - name: Check if there are changes
+#         id: check-changes
+#         run: |
+#           if git diff --staged --quiet; then
+#             echo "has_changes=false" >> $GITHUB_OUTPUT
+#             echo "⚠️ No changes detected in manifest"
+#           else
+#             echo "has_changes=true" >> $GITHUB_OUTPUT
+#             echo "✅ Changes detected in manifest"
+#           fi
 
-      - name: Commit and push changes
-        if: steps.check-changes.outputs.has_changes == 'true'
-        run: |
-          git add k8s/dev/dev.yaml
-          git commit -m "chore: update dev image to ${{ needs.build-and-push-dev.outputs.image-tag }} [skip ci]"
-          git push origin ${{ needs.build-and-push-dev.outputs.branch-name }}
+#       - name: Commit and push changes
+#         if: steps.check-changes.outputs.has_changes == 'true'
+#         run: |
+#           git add k8s/dev/dev.yaml
+#           git commit -m "chore: update dev image to ${{ needs.build-and-push-dev.outputs.image-tag }} [skip ci]"
+#           git push origin ${{ needs.build-and-push-dev.outputs.branch-name }}
 
-      - name: ArgoCD Auto-Sync Notification
-        run: |
-          echo "✅ Dev manifest updated successfully!"
-          echo "🌿 Branch: ${{ needs.build-and-push-dev.outputs.branch-name }}"
-          echo "🔄 ArgoCD will auto-sync changes to namespace: argo-dev"
-          echo "📦 Image: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-dev.outputs.image-tag }}"
+#       - name: ArgoCD Auto-Sync Notification
+#         run: |
+#           echo "✅ Dev manifest updated successfully!"
+#           echo "🌿 Branch: ${{ needs.build-and-push-dev.outputs.branch-name }}"
+#           echo "🔄 ArgoCD will auto-sync changes to namespace: argo-dev"
+#           echo "📦 Image: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-dev.outputs.image-tag }}"
 
-  update-argocd-app-dev:
-    needs: [build-and-push-dev, update-manifests-dev]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Update ArgoCD Application via Kubernetes API
-        env:
-          KUBECONFIG_DATA: ${{ secrets.KUBECONFIG }}
-        run: |
-          # Setup kubeconfig
-          mkdir -p ~/.kube
-          echo "$KUBECONFIG_DATA" | base64 -d > ~/.kube/config
+#   update-argocd-app-dev:
+#     needs: [build-and-push-dev, update-manifests-dev]
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Update ArgoCD Application via Kubernetes API
+#         env:
+#           KUBECONFIG_DATA: ${{ secrets.KUBECONFIG }}
+#         run: |
+#           # Setup kubeconfig
+#           mkdir -p ~/.kube
+#           echo "$KUBECONFIG_DATA" | base64 -d > ~/.kube/config
           
-          # Update ArgoCD Application targetRevision
-          kubectl patch application todolist-dev -n argocd --type merge -p '{
-            "spec": {
-              "source": {
-                "targetRevision": "${{ needs.build-and-push-dev.outputs.branch-name }}"
-              }
-            }
-          }'
+#           # Update ArgoCD Application targetRevision
+#           kubectl patch application todolist-dev -n argocd --type merge -p '{
+#             "spec": {
+#               "source": {
+#                 "targetRevision": "${{ needs.build-and-push-dev.outputs.branch-name }}"
+#               }
+#             }
+#           }'
           
-          echo "✅ ArgoCD Application updated to track branch: ${{ needs.build-and-push-dev.outputs.branch-name }}"
+#           echo "✅ ArgoCD Application updated to track branch: ${{ needs.build-and-push-dev.outputs.branch-name }}"
           
-          # Trigger sync
-          kubectl patch application todolist-dev -n argocd --type merge -p '{
-            "operation": {
-              "initiatedBy": {
-                "username": "github-actions"
-              },
-              "sync": {
-                "revision": "${{ needs.build-and-push-dev.outputs.branch-name }}"
-              }
-            }
-          }' || echo "Sync will happen automatically"
+#           # Trigger sync
+#           kubectl patch application todolist-dev -n argocd --type merge -p '{
+#             "operation": {
+#               "initiatedBy": {
+#                 "username": "github-actions"
+#               },
+#               "sync": {
+#                 "revision": "${{ needs.build-and-push-dev.outputs.branch-name }}"
+#               }
+#             }
+#           }' || echo "Sync will happen automatically"
 
-  build-and-push-qa:
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/develop'
-    outputs:
-      image-tag: ${{ steps.set-tag.outputs.tag }}
-      branch-name: ${{ steps.extract-branch.outputs.branch }}
+#   build-and-push-qa:
+#     runs-on: ubuntu-latest
+#     if: github.ref == 'refs/heads/develop'
+#     outputs:
+#       image-tag: ${{ steps.set-tag.outputs.tag }}
+#       branch-name: ${{ steps.extract-branch.outputs.branch }}
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+#     steps:
+#       - name: Checkout code
+#         uses: actions/checkout@v4
 
-      - name: Extract branch name
-        id: extract-branch
-        run: |
-          BRANCH_NAME=${GITHUB_REF#refs/heads/}
-          echo "branch=${BRANCH_NAME}" >> $GITHUB_OUTPUT
-          echo "📌 Source branch: ${BRANCH_NAME}"
+#       - name: Extract branch name
+#         id: extract-branch
+#         run: |
+#           BRANCH_NAME=${GITHUB_REF#refs/heads/}
+#           echo "branch=${BRANCH_NAME}" >> $GITHUB_OUTPUT
+#           echo "📌 Source branch: ${BRANCH_NAME}"
 
-      - name: Set image tag
-        id: set-tag
-        run: |
-          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
-          echo "tag=${SHORT_SHA}" >> $GITHUB_OUTPUT
+#       - name: Set image tag
+#         id: set-tag
+#         run: |
+#           SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+#           echo "tag=${SHORT_SHA}" >> $GITHUB_OUTPUT
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+#       - name: Set up Docker Buildx
+#         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to Docker Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.DOCKER_REGISTRY }}
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
+#       - name: Log in to Docker Registry
+#         uses: docker/login-action@v3
+#         with:
+#           registry: ${{ env.DOCKER_REGISTRY }}
+#           username: ${{ secrets.DOCKER_USERNAME }}
+#           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: |
-            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}
-            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:qa-latest
+#       - name: Build and push Docker image
+#         uses: docker/build-push-action@v5
+#         with:
+#           context: .
+#           push: true
+#           tags: |
+#             ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}
+#             ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:qa-latest
 
-  update-manifests-qa:
-    needs: build-and-push-qa
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout manifests repo (develop branch)
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ env.MANIFEST_REPO }}
-          token: ${{ secrets.GIT_TOKEN }}
-          ref: ${{ needs.build-and-push-qa.outputs.branch-name }}
-          fetch-depth: 0
+#   update-manifests-qa:
+#     needs: build-and-push-qa
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Checkout manifests repo (develop branch)
+#         uses: actions/checkout@v4
+#         with:
+#           repository: ${{ env.MANIFEST_REPO }}
+#           token: ${{ secrets.GIT_TOKEN }}
+#           ref: ${{ needs.build-and-push-qa.outputs.branch-name }}
+#           fetch-depth: 0
 
-      - name: Configure Git
-        run: |
-          git config --global user.name "GitHub Actions Bot"
-          git config --global user.email "actions@github.com"
+#       - name: Configure Git
+#         run: |
+#           git config --global user.name "GitHub Actions Bot"
+#           git config --global user.email "actions@github.com"
 
-      - name: Pull latest changes
-        run: |
-          git pull origin ${{ needs.build-and-push-qa.outputs.branch-name }} --no-rebase || true
+#       - name: Pull latest changes
+#         run: |
+#           git pull origin ${{ needs.build-and-push-qa.outputs.branch-name }} --no-rebase || true
 
-      - name: Update QA manifest
-        run: |
-          sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
-          sudo chmod +x /usr/bin/yq
-          yq eval '.spec.template.spec.containers[0].image = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-qa.outputs.image-tag }}"' -i k8s/qa/qa.yaml
+#       - name: Update QA manifest
+#         run: |
+#           sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
+#           sudo chmod +x /usr/bin/yq
+#           yq eval '.spec.template.spec.containers[0].image = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-qa.outputs.image-tag }}"' -i k8s/qa/qa.yaml
 
-      - name: Check if there are changes
-        id: check-changes
-        run: |
-          if git diff --staged --quiet; then
-            echo "has_changes=false" >> $GITHUB_OUTPUT
-          else
-            echo "has_changes=true" >> $GITHUB_OUTPUT
-          fi
+#       - name: Check if there are changes
+#         id: check-changes
+#         run: |
+#           if git diff --staged --quiet; then
+#             echo "has_changes=false" >> $GITHUB_OUTPUT
+#           else
+#             echo "has_changes=true" >> $GITHUB_OUTPUT
+#           fi
 
-      - name: Commit and push changes
-        if: steps.check-changes.outputs.has_changes == 'true'
-        run: |
-          git add k8s/qa/qa.yaml
-          git commit -m "chore: update QA image to ${{ needs.build-and-push-qa.outputs.image-tag }} [skip ci]"
-          git push origin ${{ needs.build-and-push-qa.outputs.branch-name }}
+#       - name: Commit and push changes
+#         if: steps.check-changes.outputs.has_changes == 'true'
+#         run: |
+#           git add k8s/qa/qa.yaml
+#           git commit -m "chore: update QA image to ${{ needs.build-and-push-qa.outputs.image-tag }} [skip ci]"
+#           git push origin ${{ needs.build-and-push-qa.outputs.branch-name }}
 
-      - name: ArgoCD Auto-Sync Notification
-        run: |
-          echo "✅ QA manifest updated!"
-          echo "🌿 Branch: ${{ needs.build-and-push-qa.outputs.branch-name }}"
-          echo "🔄 ArgoCD will auto-sync to namespace: argo-qa"
-          echo "📦 Image: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-qa.outputs.image-tag }}"
+#       - name: ArgoCD Auto-Sync Notification
+#         run: |
+#           echo "✅ QA manifest updated!"
+#           echo "🌿 Branch: ${{ needs.build-and-push-qa.outputs.branch-name }}"
+#           echo "🔄 ArgoCD will auto-sync to namespace: argo-qa"
+#           echo "📦 Image: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-qa.outputs.image-tag }}"
 
-  build-and-push-staging:
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/heads/release/')
-    outputs:
-      image-tag: ${{ steps.set-tag.outputs.tag }}
-      branch-name: ${{ steps.extract-branch.outputs.branch }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+#   build-and-push-staging:
+#     runs-on: ubuntu-latest
+#     if: startsWith(github.ref, 'refs/heads/release/')
+#     outputs:
+#       image-tag: ${{ steps.set-tag.outputs.tag }}
+#       branch-name: ${{ steps.extract-branch.outputs.branch }}
+#     steps:
+#       - name: Checkout code
+#         uses: actions/checkout@v4
       
-      - name: Extract branch name
-        id: extract-branch
-        run: |
-          BRANCH_NAME=${GITHUB_REF#refs/heads/}
-          echo "branch=${BRANCH_NAME}" >> $GITHUB_OUTPUT
-          echo "📌 Source branch: ${BRANCH_NAME}"
+#       - name: Extract branch name
+#         id: extract-branch
+#         run: |
+#           BRANCH_NAME=${GITHUB_REF#refs/heads/}
+#           echo "branch=${BRANCH_NAME}" >> $GITHUB_OUTPUT
+#           echo "📌 Source branch: ${BRANCH_NAME}"
       
-      - name: Set image tag
-        id: set-tag
-        run: |
-          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
-          echo "tag=${SHORT_SHA}" >> $GITHUB_OUTPUT
+#       - name: Set image tag
+#         id: set-tag
+#         run: |
+#           SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+#           echo "tag=${SHORT_SHA}" >> $GITHUB_OUTPUT
       
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+#       - name: Set up Docker Buildx
+#         uses: docker/setup-buildx-action@v3
       
-      - name: Log in to Docker Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.DOCKER_REGISTRY }}
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
+#       - name: Log in to Docker Registry
+#         uses: docker/login-action@v3
+#         with:
+#           registry: ${{ env.DOCKER_REGISTRY }}
+#           username: ${{ secrets.DOCKER_USERNAME }}
+#           password: ${{ secrets.DOCKER_PASSWORD }}
       
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: |
-            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}
-            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:staging-latest
+#       - name: Build and push Docker image
+#         uses: docker/build-push-action@v5
+#         with:
+#           context: .
+#           push: true
+#           tags: |
+#             ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}
+#             ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:staging-latest
 
-  update-manifests-staging:
-    needs: build-and-push-staging
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout manifests repo (release branch)
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ env.MANIFEST_REPO }}
-          token: ${{ secrets.GIT_TOKEN }}
-          ref: ${{ needs.build-and-push-staging.outputs.branch-name }}
-          fetch-depth: 0
+#   update-manifests-staging:
+#     needs: build-and-push-staging
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Checkout manifests repo (release branch)
+#         uses: actions/checkout@v4
+#         with:
+#           repository: ${{ env.MANIFEST_REPO }}
+#           token: ${{ secrets.GIT_TOKEN }}
+#           ref: ${{ needs.build-and-push-staging.outputs.branch-name }}
+#           fetch-depth: 0
       
-      - name: Configure Git
-        run: |
-          git config --global user.name "GitHub Actions Bot"
-          git config --global user.email "actions@github.com"
+#       - name: Configure Git
+#         run: |
+#           git config --global user.name "GitHub Actions Bot"
+#           git config --global user.email "actions@github.com"
       
-      - name: Pull latest changes
-        run: |
-          git pull origin ${{ needs.build-and-push-staging.outputs.branch-name }} --no-rebase || true
+#       - name: Pull latest changes
+#         run: |
+#           git pull origin ${{ needs.build-and-push-staging.outputs.branch-name }} --no-rebase || true
       
-      - name: Update staging manifest
-        run: |
-          sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
-          sudo chmod +x /usr/bin/yq
-          yq eval '.spec.template.spec.containers[0].image = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-staging.outputs.image-tag }}"' -i k8s/staging/staging.yaml
+#       - name: Update staging manifest
+#         run: |
+#           sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
+#           sudo chmod +x /usr/bin/yq
+#           yq eval '.spec.template.spec.containers[0].image = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-staging.outputs.image-tag }}"' -i k8s/staging/staging.yaml
       
-      - name: Check if there are changes
-        id: check-changes
-        run: |
-          if git diff --staged --quiet; then
-            echo "has_changes=false" >> $GITHUB_OUTPUT
-          else
-            echo "has_changes=true" >> $GITHUB_OUTPUT
-          fi
+#       - name: Check if there are changes
+#         id: check-changes
+#         run: |
+#           if git diff --staged --quiet; then
+#             echo "has_changes=false" >> $GITHUB_OUTPUT
+#           else
+#             echo "has_changes=true" >> $GITHUB_OUTPUT
+#           fi
       
-      - name: Commit and push changes
-        if: steps.check-changes.outputs.has_changes == 'true'
-        run: |
-          git add k8s/staging/staging.yaml
-          git commit -m "chore: update staging image to ${{ needs.build-and-push-staging.outputs.image-tag }} [skip ci]"
-          git push origin ${{ needs.build-and-push-staging.outputs.branch-name }}
+#       - name: Commit and push changes
+#         if: steps.check-changes.outputs.has_changes == 'true'
+#         run: |
+#           git add k8s/staging/staging.yaml
+#           git commit -m "chore: update staging image to ${{ needs.build-and-push-staging.outputs.image-tag }} [skip ci]"
+#           git push origin ${{ needs.build-and-push-staging.outputs.branch-name }}
       
-      - name: ArgoCD Auto-Sync Notification
-        run: |
-          echo "✅ Staging manifest updated!"
-          echo "🌿 Branch: ${{ needs.build-and-push-staging.outputs.branch-name }}"
-          echo "🔄 ArgoCD will auto-sync to namespace: argo-staging"
-          echo "📦 Image: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-staging.outputs.image-tag }}"
+#       - name: ArgoCD Auto-Sync Notification
+#         run: |
+#           echo "✅ Staging manifest updated!"
+#           echo "🌿 Branch: ${{ needs.build-and-push-staging.outputs.branch-name }}"
+#           echo "🔄 ArgoCD will auto-sync to namespace: argo-staging"
+#           echo "📦 Image: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-staging.outputs.image-tag }}"
 
-  update-argocd-app-staging:
-    needs: [build-and-push-staging, update-manifests-staging]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Update ArgoCD Application via Kubernetes API
-        env:
-          KUBECONFIG_DATA: ${{ secrets.KUBECONFIG }}
-        run: |
-          mkdir -p ~/.kube
-          echo "$KUBECONFIG_DATA" | base64 -d > ~/.kube/config
+#   update-argocd-app-staging:
+#     needs: [build-and-push-staging, update-manifests-staging]
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Update ArgoCD Application via Kubernetes API
+#         env:
+#           KUBECONFIG_DATA: ${{ secrets.KUBECONFIG }}
+#         run: |
+#           mkdir -p ~/.kube
+#           echo "$KUBECONFIG_DATA" | base64 -d > ~/.kube/config
           
-          kubectl patch application todolist-staging -n argocd --type merge -p '{
-            "spec": {
-              "source": {
-                "targetRevision": "${{ needs.build-and-push-staging.outputs.branch-name }}"
-              }
-            }
-          }'
+#           kubectl patch application todolist-staging -n argocd --type merge -p '{
+#             "spec": {
+#               "source": {
+#                 "targetRevision": "${{ needs.build-and-push-staging.outputs.branch-name }}"
+#               }
+#             }
+#           }'
           
-          echo "✅ ArgoCD Application updated to track branch: ${{ needs.build-and-push-staging.outputs.branch-name }}"
+#           echo "✅ ArgoCD Application updated to track branch: ${{ needs.build-and-push-staging.outputs.branch-name }}"
 
-  build-and-push-prod:
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
-    outputs:
-      image-tag: ${{ steps.set-tag.outputs.tag }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+#   build-and-push-prod:
+#     runs-on: ubuntu-latest
+#     if: startsWith(github.ref, 'refs/tags/v')
+#     outputs:
+#       image-tag: ${{ steps.set-tag.outputs.tag }}
+#     steps:
+#       - name: Checkout code
+#         uses: actions/checkout@v4
       
-      - name: Set image tag
-        id: set-tag
-        run: |
-          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
-          echo "tag=${SHORT_SHA}" >> $GITHUB_OUTPUT
+#       - name: Set image tag
+#         id: set-tag
+#         run: |
+#           SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+#           echo "tag=${SHORT_SHA}" >> $GITHUB_OUTPUT
       
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+#       - name: Set up Docker Buildx
+#         uses: docker/setup-buildx-action@v3
       
-      - name: Log in to Docker Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.DOCKER_REGISTRY }}
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
+#       - name: Log in to Docker Registry
+#         uses: docker/login-action@v3
+#         with:
+#           registry: ${{ env.DOCKER_REGISTRY }}
+#           username: ${{ secrets.DOCKER_USERNAME }}
+#           password: ${{ secrets.DOCKER_PASSWORD }}
       
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: |
-            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}
-            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:prod-latest
-            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+#       - name: Build and push Docker image
+#         uses: docker/build-push-action@v5
+#         with:
+#           context: .
+#           push: true
+#           tags: |
+#             ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}
+#             ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:prod-latest
+#             ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
 
-  update-manifests-prod:
-    needs: build-and-push-prod
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout manifests repo (main branch for prod)
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ env.MANIFEST_REPO }}
-          token: ${{ secrets.GIT_TOKEN }}
-          ref: main
-          fetch-depth: 0
+#   update-manifests-prod:
+#     needs: build-and-push-prod
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Checkout manifests repo (main branch for prod)
+#         uses: actions/checkout@v4
+#         with:
+#           repository: ${{ env.MANIFEST_REPO }}
+#           token: ${{ secrets.GIT_TOKEN }}
+#           ref: main
+#           fetch-depth: 0
       
-      - name: Configure Git
-        run: |
-          git config --global user.name "GitHub Actions Bot"
-          git config --global user.email "actions@github.com"
+#       - name: Configure Git
+#         run: |
+#           git config --global user.name "GitHub Actions Bot"
+#           git config --global user.email "actions@github.com"
       
-      - name: Pull latest changes
-        run: |
-          git pull origin main --no-rebase || true
+#       - name: Pull latest changes
+#         run: |
+#           git pull origin main --no-rebase || true
       
-      - name: Update prod manifest
-        run: |
-          sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
-          sudo chmod +x /usr/bin/yq
-          yq eval '.spec.template.spec.containers[0].image = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-prod.outputs.image-tag }}"' -i k8s/prod/prod.yaml
+#       - name: Update prod manifest
+#         run: |
+#           sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
+#           sudo chmod +x /usr/bin/yq
+#           yq eval '.spec.template.spec.containers[0].image = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-prod.outputs.image-tag }}"' -i k8s/prod/prod.yaml
       
-      - name: Check if there are changes
-        id: check-changes
-        run: |
-          if git diff --staged --quiet; then
-            echo "has_changes=false" >> $GITHUB_OUTPUT
-          else
-            echo "has_changes=true" >> $GITHUB_OUTPUT
-          fi
+#       - name: Check if there are changes
+#         id: check-changes
+#         run: |
+#           if git diff --staged --quiet; then
+#             echo "has_changes=false" >> $GITHUB_OUTPUT
+#           else
+#             echo "has_changes=true" >> $GITHUB_OUTPUT
+#           fi
       
-      - name: Commit and push changes
-        if: steps.check-changes.outputs.has_changes == 'true'
-        run: |
-          git add k8s/prod/prod.yaml
-          git commit -m "chore: update prod image to ${{ needs.build-and-push-prod.outputs.image-tag }} [skip ci]"
-          git push origin main
+#       - name: Commit and push changes
+#         if: steps.check-changes.outputs.has_changes == 'true'
+#         run: |
+#           git add k8s/prod/prod.yaml
+#           git commit -m "chore: update prod image to ${{ needs.build-and-push-prod.outputs.image-tag }} [skip ci]"
+#           git push origin main
       
-      - name: ArgoCD Auto-Sync Notification
-        run: |
-          echo "✅ Prod manifest updated!"
-          echo "🌿 Branch: main"
-          echo "🔄 ArgoCD will auto-sync to namespace: argo-prod"
-          echo "📦 Image: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-prod.outputs.image-tag }}"
+#       - name: ArgoCD Auto-Sync Notification
+#         run: |
+#           echo "✅ Prod manifest updated!"
+#           echo "🌿 Branch: main"
+#           echo "🔄 ArgoCD will auto-sync to namespace: argo-prod"
+#           echo "📦 Image: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-prod.outputs.image-tag }}"

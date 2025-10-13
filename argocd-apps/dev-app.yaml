@@ -5,16 +5,13 @@ metadata:
   namespace: argocd
 spec:
   project: default
-  
   source:
     repoURL: https://github.com/ashwinimhasrup/argocd-TodoList.git
-    targetRevision: feature/test  # This will be updated by pipeline
+    targetRevision: feature/test # This will be updated by pipeline
     path: k8s/dev
-  
   destination:
     server: https://kubernetes.default.svc
     namespace: argo-dev
-  
   syncPolicy:
     automated:
       prune: true

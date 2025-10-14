@@ -38,7 +38,7 @@ env:
 jobs:
   build-for-pr:
     name: pull_request (CI only for PR)
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     if: github.event_name == 'pull_request'
 
     steps:
@@ -75,7 +75,7 @@ jobs:
           echo "🧪 Code review and testing is done."
 
   build-and-push-dev:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     if: |
       startsWith(github.ref, 'refs/heads/hotfix/') ||
       startsWith(github.ref, 'refs/heads/feature/') ||
@@ -124,7 +124,7 @@ jobs:
 
   update-manifests-dev:
     needs: build-and-push-dev
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - name: Checkout manifests repo (same branch as source)
         uses: actions/checkout@v4
@@ -187,7 +187,7 @@ jobs:
           echo "   3. Deploy to namespace: argo-dev"
 
   build-and-push-qa:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     if: github.ref == 'refs/heads/develop'
     outputs:
       image-tag: ${{ steps.set-tag.outputs.tag }}
@@ -231,7 +231,7 @@ jobs:
 
   update-manifests-qa:
     needs: build-and-push-qa
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - name: Checkout manifests repo (develop branch)
         uses: actions/checkout@v4
@@ -283,7 +283,7 @@ jobs:
           echo "📦 Image: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-qa.outputs.image-tag }}"
 
   build-and-push-staging:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     if: startsWith(github.ref, 'refs/heads/release/')
     outputs:
       image-tag: ${{ steps.set-tag.outputs.tag }}
@@ -326,7 +326,7 @@ jobs:
 
   update-manifests-staging:
     needs: build-and-push-staging
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - name: Checkout manifests repo (release branch)
         uses: actions/checkout@v4
@@ -382,7 +382,7 @@ jobs:
           echo "📦 Image: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-staging.outputs.image-tag }}"
 
   build-and-push-prod:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     if: startsWith(github.ref, 'refs/tags/v')
     outputs:
       image-tag: ${{ steps.set-tag.outputs.tag }}
@@ -418,7 +418,7 @@ jobs:
 
   update-manifests-prod:
     needs: build-and-push-prod
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - name: Checkout manifests repo (main branch for prod)
         uses: actions/checkout@v4

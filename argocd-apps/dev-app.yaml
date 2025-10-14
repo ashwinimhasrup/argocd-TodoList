@@ -3,6 +3,7 @@ kind: Application
 metadata:
   name: todolist-dev
   namespace: argocd
+  
 spec:
   project: default
   source:
@@ -19,3 +20,4 @@ spec:
       allowEmpty: false
     syncOptions:
       - CreateNamespace=true
+

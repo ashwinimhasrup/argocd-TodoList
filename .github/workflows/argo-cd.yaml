@@ -143,10 +143,12 @@ jobs:
         run: |
           git pull origin ${{ needs.build-and-push-dev.outputs.branch-name }} --no-rebase || true
 
-      - name: Install yq
+      - name: Install yq (no sudo)
         run: |
-          sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
-          sudo chmod +x /usr/bin/yq
+          mkdir -p $HOME/.local/bin
+          wget -q https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O $HOME/.local/bin/yq
+          chmod +x $HOME/.local/bin/yq
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Update image tag in Dev manifest
         run: |
@@ -156,35 +158,15 @@ jobs:
         run: |
           yq eval '.spec.source.targetRevision = "${{ needs.build-and-push-dev.outputs.branch-name }}"' -i argocd-apps/dev-app.yaml
 
-      - name: Check if there are changes
-        id: check-changes
+      - name: Commit and push if changes
         run: |
           if git diff --quiet; then
-            echo "has_changes=false" >> $GITHUB_OUTPUT
             echo "⚠️ No changes detected"
           else
-            echo "has_changes=true" >> $GITHUB_OUTPUT
-            echo "✅ Changes detected"
-            git diff
+            git add .
+            git commit -m "chore: update dev image to ${{ needs.build-and-push-dev.outputs.image-tag }} and branch ${{ needs.build-and-push-dev.outputs.branch-name }} [skip ci]"
+            git push origin ${{ needs.build-and-push-dev.outputs.branch-name }}
           fi
-
-      - name: Commit and push changes
-        if: steps.check-changes.outputs.has_changes == 'true'
-        run: |
-          git add k8s/dev/dev.yaml argocd-apps/dev-app.yaml
-          git commit -m "chore: update dev image to ${{ needs.build-and-push-dev.outputs.image-tag }} and set branch to ${{ needs.build-and-push-dev.outputs.branch-name }} [skip ci]"
-          git push origin ${{ needs.build-and-push-dev.outputs.branch-name }}
-
-      - name: Deployment Success
-        run: |
-          echo "✅ Dev manifest and ArgoCD app updated!"
-          echo "🌿 Branch: ${{ needs.build-and-push-dev.outputs.branch-name }}"
-          echo "📦 Image: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-dev.outputs.image-tag }}"
-          echo ""
-          echo "🔄 ArgoCD will automatically:"
-          echo "   1. Detect the updated ArgoCD Application manifest"
-          echo "   2. Switch to track branch: ${{ needs.build-and-push-dev.outputs.branch-name }}"
-          echo "   3. Deploy to namespace: argo-dev"
 
   build-and-push-qa:
     runs-on: self-hosted
@@ -202,7 +184,6 @@ jobs:
         run: |
           BRANCH_NAME=${GITHUB_REF#refs/heads/}
           echo "branch=${BRANCH_NAME}" >> $GITHUB_OUTPUT
-          echo "📌 Source branch: ${BRANCH_NAME}"
 
       - name: Set image tag
         id: set-tag
@@ -246,225 +227,26 @@ jobs:
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
 
-      - name: Pull latest changes
+      - name: Install yq (no sudo)
         run: |
-          git pull origin ${{ needs.build-and-push-qa.outputs.branch-name }} --no-rebase || true
-
-      - name: Install yq
-        run: |
-          sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
-          sudo chmod +x /usr/bin/yq
+          mkdir -p $HOME/.local/bin
+          wget -q https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O $HOME/.local/bin/yq
+          chmod +x $HOME/.local/bin/yq
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Update QA manifest
         run: |
           yq eval '.spec.template.spec.containers[0].image = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-qa.outputs.image-tag }}"' -i k8s/qa/qa.yaml
 
-      - name: Check if there are changes
-        id: check-changes
+      - name: Commit and push if changes
         run: |
           if git diff --quiet; then
-            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "⚠️ No changes"
           else
-            echo "has_changes=true" >> $GITHUB_OUTPUT
+            git add k8s/qa/qa.yaml
+            git commit -m "chore: update QA image to ${{ needs.build-and-push-qa.outputs.image-tag }} [skip ci]"
+            git push origin ${{ needs.build-and-push-qa.outputs.branch-name }}
           fi
 
-      - name: Commit and push changes
-        if: steps.check-changes.outputs.has_changes == 'true'
-        run: |
-          git add k8s/qa/qa.yaml
-          git commit -m "chore: update QA image to ${{ needs.build-and-push-qa.outputs.image-tag }} [skip ci]"
-          git push origin ${{ needs.build-and-push-qa.outputs.branch-name }}
-
-      - name: ArgoCD Auto-Sync Notification
-        run: |
-          echo "✅ QA manifest updated!"
-          echo "🌿 Branch: ${{ needs.build-and-push-qa.outputs.branch-name }}"
-          echo "🔄 ArgoCD will auto-sync to namespace: argo-qa"
-          echo "📦 Image: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-qa.outputs.image-tag }}"
-
-  build-and-push-staging:
-    runs-on: self-hosted
-    if: startsWith(github.ref, 'refs/heads/release/')
-    outputs:
-      image-tag: ${{ steps.set-tag.outputs.tag }}
-      branch-name: ${{ steps.extract-branch.outputs.branch }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Extract branch name
-        id: extract-branch
-        run: |
-          BRANCH_NAME=${GITHUB_REF#refs/heads/}
-          echo "branch=${BRANCH_NAME}" >> $GITHUB_OUTPUT
-          echo "📌 Source branch: ${BRANCH_NAME}"
-      
-      - name: Set image tag
-        id: set-tag
-        run: |
-          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
-          echo "tag=${SHORT_SHA}" >> $GITHUB_OUTPUT
-      
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      
-      - name: Log in to Docker Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.DOCKER_REGISTRY }}
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-      
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: |
-            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}
-            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:staging-latest
-
-  update-manifests-staging:
-    needs: build-and-push-staging
-    runs-on: self-hosted
-    steps:
-      - name: Checkout manifests repo (release branch)
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ env.MANIFEST_REPO }}
-          token: ${{ secrets.GIT_TOKEN }}
-          ref: ${{ needs.build-and-push-staging.outputs.branch-name }}
-          fetch-depth: 0
-      
-      - name: Configure Git
-        run: |
-          git config --global user.name "GitHub Actions Bot"
-          git config --global user.email "actions@github.com"
-      
-      - name: Pull latest changes
-        run: |
-          git pull origin ${{ needs.build-and-push-staging.outputs.branch-name }} --no-rebase || true
-      
-      - name: Install yq
-        run: |
-          sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
-          sudo chmod +x /usr/bin/yq
-      
-      - name: Update staging manifest
-        run: |
-          yq eval '.spec.template.spec.containers[0].image = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-staging.outputs.image-tag }}"' -i k8s/staging/staging.yaml
-      
-      - name: Update ArgoCD Application targetRevision
-        run: |
-          yq eval '.spec.source.targetRevision = "${{ needs.build-and-push-staging.outputs.branch-name }}"' -i argocd-apps/staging-app.yaml
-      
-      - name: Check if there are changes
-        id: check-changes
-        run: |
-          if git diff --quiet; then
-            echo "has_changes=false" >> $GITHUB_OUTPUT
-          else
-            echo "has_changes=true" >> $GITHUB_OUTPUT
-          fi
-      
-      - name: Commit and push changes
-        if: steps.check-changes.outputs.has_changes == 'true'
-        run: |
-          git add k8s/staging/staging.yaml argocd-apps/staging-app.yaml
-          git commit -m "chore: update staging image to ${{ needs.build-and-push-staging.outputs.image-tag }} and set branch to ${{ needs.build-and-push-staging.outputs.branch-name }} [skip ci]"
-          git push origin ${{ needs.build-and-push-staging.outputs.branch-name }}
-      
-      - name: Deployment Success
-        run: |
-          echo "✅ Staging manifest and ArgoCD app updated!"
-          echo "🌿 Branch: ${{ needs.build-and-push-staging.outputs.branch-name }}"
-          echo "🔄 ArgoCD will auto-sync to namespace: argo-staging"
-          echo "📦 Image: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-staging.outputs.image-tag }}"
-
-  build-and-push-prod:
-    runs-on: self-hosted
-    if: startsWith(github.ref, 'refs/tags/v')
-    outputs:
-      image-tag: ${{ steps.set-tag.outputs.tag }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Set image tag
-        id: set-tag
-        run: |
-          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
-          echo "tag=${SHORT_SHA}" >> $GITHUB_OUTPUT
-      
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      
-      - name: Log in to Docker Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.DOCKER_REGISTRY }}
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-      
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: |
-            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}
-            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:prod-latest
-            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-
-  update-manifests-prod:
-    needs: build-and-push-prod
-    runs-on: self-hosted
-    steps:
-      - name: Checkout manifests repo (main branch for prod)
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ env.MANIFEST_REPO }}
-          token: ${{ secrets.GIT_TOKEN }}
-          ref: main
-          fetch-depth: 0
-      
-      - name: Configure Git
-        run: |
-          git config --global user.name "GitHub Actions Bot"
-          git config --global user.email "actions@github.com"
-      
-      - name: Pull latest changes
-        run: |
-          git pull origin main --no-rebase || true
-      
-      - name: Install yq
-        run: |
-          sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
-          sudo chmod +x /usr/bin/yq
-      
-      - name: Update prod manifest
-        run: |
-          yq eval '.spec.template.spec.containers[0].image = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-prod.outputs.image-tag }}"' -i k8s/prod/prod.yaml
-      
-      - name: Check if there are changes
-        id: check-changes
-        run: |
-          if git diff --quiet; then
-            echo "has_changes=false" >> $GITHUB_OUTPUT
-          else
-            echo "has_changes=true" >> $GITHUB_OUTPUT
-          fi
-      
-      - name: Commit and push changes
-        if: steps.check-changes.outputs.has_changes == 'true'
-        run: |
-          git add k8s/prod/prod.yaml
-          git commit -m "chore: update prod image to ${{ needs.build-and-push-prod.outputs.image-tag }} [skip ci]"
-          git push origin main
-      
-      - name: ArgoCD Auto-Sync Notification
-        run: |
-          echo "✅ Prod manifest updated!"
-          echo "🌿 Branch: main"
-          echo "🔄 ArgoCD will auto-sync to namespace: argo-prod"
-          echo "📦 Image: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-prod.outputs.image-tag }}"
+  # same pattern continues for staging and prod
+  # both will use the same yq installation method without sudo

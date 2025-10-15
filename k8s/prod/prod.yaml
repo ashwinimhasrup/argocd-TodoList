@@ -1,8 +1,8 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: prod-mongo-pvc
-  namespace: argo-prod
+  name: mongo-pvc
+  namespace: dev
 spec:
   accessModes:
     - ReadWriteOnce
@@ -13,8 +13,8 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: prod-mongo
-  namespace: argo-prod
+  name: mongo
+  namespace: dev
 spec:
   selector:
     app: mongo
@@ -25,8 +25,8 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: prod-mongo
-  namespace: argo-prod
+  name: mongo
+  namespace: dev
 spec:
   selector:
     matchLabels:
@@ -37,7 +37,7 @@ spec:
         app: mongo
     spec:
       containers:
-        - name: prod-mongo
+        - name: mongo
           image: mongo
           ports:
             - containerPort: 27017
@@ -47,14 +47,14 @@ spec:
       volumes:
         - name: storage
           persistentVolumeClaim:
-            claimName: prod-mongo-pvc
+            claimName: mongo-pvc
 
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: todolist
-  namespace: argo-prod
+  namespace: dev
 
 spec:
   replicas: 1
@@ -73,16 +73,16 @@ spec:
             - containerPort: 4000
           env:
             - name: NODE_ENV
-              value: prod
+              value: development
             - name: mongoDbUrl
-              value: mongodb://prod-mongo:27017/todolistDb_prod
+              value: mongodb://mongo:27017/todolistDb_dev
           imagePullPolicy: IfNotPresent
 ---          
 apiVersion: v1
 kind: Service
 metadata:
   name: todolist
-  namespace: argo-prod
+  namespace: dev
 spec:
   selector:
     app: todolist

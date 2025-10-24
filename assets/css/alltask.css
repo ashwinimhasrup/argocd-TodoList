@@ -9,8 +9,7 @@ body {
     font-family: 'Poppins', sans-serif;
     background-color: #181a1b;
     overflow: hidden;
-    letter-spacing: 1px;
-    
+    letter-spacing: 1px; 
 }
 
 .nav-container {

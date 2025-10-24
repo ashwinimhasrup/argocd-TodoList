@@ -9,12 +9,26 @@ spec:
   resources:
     requests:
       storage: 256Mi
-  storageClassName: local-path
-  volumeMode: Filesystem
   template:
     spec:
       containers:
-        - image: docker.io/ashwini73/todolist-app:1f40c80
+        - image: docker.io/ashwini73/todolist-app:571ee40
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongo
+  namespace: argo-dev
+spec:
+  selector:
+    app: mongo
+  ports:
+    - port: 27017
+      targetPort: 27017
+  template:
+    spec:
+      containers:
+        - image: docker.io/ashwini73/todolist-app:571ee40
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -32,33 +46,16 @@ spec:
     spec:
       containers:
         - name: mongo
-          image: docker.io/ashwini73/todolist-app:1f40c80
+          image: docker.io/ashwini73/todolist-app:571ee40
           ports:
             - containerPort: 27017
           volumeMounts:
-            - name: mongo-storage
+            - name: storage
               mountPath: /data/db
       volumes:
-        - name: mongo-storage
+        - name: storage
           persistentVolumeClaim:
             claimName: mongo-pvc
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: mongo
-  namespace: argo-dev
-spec:
-  selector:
-    app: mongo
-  ports:
-    - port: 27017
-      targetPort: 27017
-  type: ClusterIP
-  template:
-    spec:
-      containers:
-        - image: docker.io/ashwini73/todolist-app:1f40c80
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -77,7 +74,7 @@ spec:
     spec:
       containers:
         - name: todolist
-          image: docker.io/ashwini73/todolist-app:1f40c80
+          image: docker.io/ashwini73/todolist-app:571ee40
           ports:
             - containerPort: 4000
           env:
@@ -98,9 +95,14 @@ spec:
   ports:
     - port: 4000
       targetPort: 4000
-      nodePort: 31059
   type: NodePort
   template:
     spec:
       containers:
-        - image: docker.io/ashwini73/todolist-app:1f40c80
+        - image: docker.io/ashwini73/todolist-app:571ee40
+---
+spec:
+  template:
+    spec:
+      containers:
+        - image: docker.io/ashwini73/todolist-app:571ee40

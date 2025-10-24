@@ -7,7 +7,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/ashwinimhasrup/argocd-TodoList.git
-    targetRevision: feature/test
+    targetRevision: feature/test2
     path: k8s/dev
   destination:
     server: https://kubernetes.default.svc

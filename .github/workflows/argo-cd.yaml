@@ -146,9 +146,10 @@ jobs:
           chmod +x $HOME/.local/bin/yq
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
-      - name: Update Dev manifest
+      - name: Update Dev manifest (nodetodo only)
         run: |
-          yq eval '.spec.template.spec.containers[0].image = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-dev.outputs.image-tag }}"' -i k8s/dev/dev.yaml
+          # Update only the nodetodo container image
+          yq eval '(.spec.template.spec.containers[] | select(.name == "nodetodo").image) = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-dev.outputs.image-tag }}"' -i k8s/dev/dev.yaml
           yq eval '.spec.source.targetRevision = "${{ needs.build-and-push-dev.outputs.branch-name }}"' -i argocd-apps/dev-app.yaml
 
       - name: Commit and push changes
@@ -157,7 +158,7 @@ jobs:
             echo "⚠️ No changes detected"
           else
             git add k8s/dev/dev.yaml argocd-apps/dev-app.yaml
-            git commit -m "chore: update dev image to ${{ needs.build-and-push-dev.outputs.image-tag }} [skip ci]"
+            git commit -m "chore: update dev nodetodo image to ${{ needs.build-and-push-dev.outputs.image-tag }} [skip ci]"
             git push origin ${{ needs.build-and-push-dev.outputs.branch-name }}
           fi
 
@@ -227,9 +228,10 @@ jobs:
           chmod +x $HOME/.local/bin/yq
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
-      - name: Update QA manifest
+      - name: Update QA manifest (nodetodo only)
         run: |
-          yq eval '.spec.template.spec.containers[0].image = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-qa.outputs.image-tag }}"' -i k8s/qa/qa.yaml
+          # Update only the nodetodo container image
+          yq eval '(.spec.template.spec.containers[] | select(.name == "nodetodo").image) = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-qa.outputs.image-tag }}"' -i k8s/qa/qa.yaml
 
       - name: Commit and push
         run: |
@@ -237,7 +239,7 @@ jobs:
             echo "⚠️ No changes"
           else
             git add k8s/qa/qa.yaml
-            git commit -m "chore: update QA image to ${{ needs.build-and-push-qa.outputs.image-tag }} [skip ci]"
+            git commit -m "chore: update QA nodetodo image to ${{ needs.build-and-push-qa.outputs.image-tag }} [skip ci]"
             git push origin ${{ needs.build-and-push-qa.outputs.branch-name }}
           fi
 
@@ -307,9 +309,10 @@ jobs:
           chmod +x $HOME/.local/bin/yq
           echo "$HOME/.local/bin" >> $GITHUB_PATH
       
-      - name: Update Staging manifest
+      - name: Update Staging manifest (nodetodo only)
         run: |
-          yq eval '.spec.template.spec.containers[0].image = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-staging.outputs.image-tag }}"' -i k8s/staging/staging.yaml
+          # Update only the nodetodo container image
+          yq eval '(.spec.template.spec.containers[] | select(.name == "nodetodo").image) = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-staging.outputs.image-tag }}"' -i k8s/staging/staging.yaml
           yq eval '.spec.source.targetRevision = "${{ needs.build-and-push-staging.outputs.branch-name }}"' -i argocd-apps/staging-app.yaml
       
       - name: Commit and push
@@ -318,7 +321,7 @@ jobs:
             echo "⚠️ No changes"
           else
             git add k8s/staging/staging.yaml argocd-apps/staging-app.yaml
-            git commit -m "chore: update staging image to ${{ needs.build-and-push-staging.outputs.image-tag }} [skip ci]"
+            git commit -m "chore: update staging nodetodo image to ${{ needs.build-and-push-staging.outputs.image-tag }} [skip ci]"
             git push origin ${{ needs.build-and-push-staging.outputs.branch-name }}
           fi
 
@@ -382,9 +385,10 @@ jobs:
           chmod +x $HOME/.local/bin/yq
           echo "$HOME/.local/bin" >> $GITHUB_PATH
       
-      - name: Update Prod manifest
+      - name: Update Prod manifest (nodetodo only)
         run: |
-          yq eval '.spec.template.spec.containers[0].image = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-prod.outputs.image-tag }}"' -i k8s/prod/prod.yaml
+          # Update only the nodetodo container image
+          yq eval '(.spec.template.spec.containers[] | select(.name == "nodetodo").image) = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-prod.outputs.image-tag }}"' -i k8s/prod/prod.yaml
       
       - name: Commit and push
         run: |
@@ -392,6 +396,6 @@ jobs:
             echo "⚠️ No changes"
           else
             git add k8s/prod/prod.yaml
-            git commit -m "chore: update prod image to ${{ needs.build-and-push-prod.outputs.image-tag }} [skip ci]"
+            git commit -m "chore: update prod nodetodo image to ${{ needs.build-and-push-prod.outputs.image-tag }} [skip ci]"
             git push origin main
           fi

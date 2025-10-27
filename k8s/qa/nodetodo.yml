@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: todolist
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: todolist
+  template:
+    metadata:
+      labels:
+        app: todolist
+    spec:
+      containers:
+        - name: todolist
+          image: ashwini73/todo:f2a9f0776e859ecd4d992e082742b9d60d539104
+          ports:
+            - containerPort: 4000
+          env:
+            - name: mongoDbUrl
+              value: mongodb://mongo:27017/todolistDb
+          imagePullPolicy: IfNotPresent
+---          
+apiVersion: v1
+kind: Service
+metadata:
+  name: todolist
+spec:
+  selector:
+    app: todolist
+  ports:
+    - port: 4000
+      targetPort: 4000
+  type: ClusterIP

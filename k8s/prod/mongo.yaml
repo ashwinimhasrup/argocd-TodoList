@@ -1,8 +1,8 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: qa-mongo-pvc
-  namespace: qa
+  name: prod-mongo-pvc
+  namespace: prod
 spec:
   accessModes:
     - ReadWriteOnce
@@ -13,8 +13,8 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: qa-mongo
-  namespace: qa
+  name: prod-mongo
+  namespace: prod
 spec:
   selector:
     app: mongo
@@ -25,8 +25,8 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: qa-mongo
-  namespace: qa
+  name: prod-mongo
+  namespace: prod
 spec:
   selector:
     matchLabels:
@@ -37,7 +37,7 @@ spec:
         app: mongo
     spec:
       containers:
-        - name: qa-mongo
+        - name: prod-mongo
           image: mongo
           ports:
             - containerPort: 27017
@@ -47,4 +47,4 @@ spec:
       volumes:
         - name: storage
           persistentVolumeClaim:
-            claimName: qa-mongo-pvc
+            claimName: prod-mongo-pvc

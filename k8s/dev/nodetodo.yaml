@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: todolist
+  namespace: dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: todolist
+  template:
+    metadata:
+      labels:
+        app: todolist
+    spec:
+      containers:
+        - name: nodetodo
+          image: docker.io/ashwini73/todolist-app:77af8cc
+          ports:
+            - containerPort: 4000
+          env:
+            - name: NODE_ENV
+              value: development
+            - name: mongoDbUrl
+              value: mongodb://mongo:27017/todolistDb_dev
+          imagePullPolicy: IfNotPresent
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: todolist
+  namespace: dev
+spec:
+  selector:
+    app: todolist
+  ports:
+    - port: 4000
+      targetPort: 4000
+  type: NodePort
+  template:
+    spec:
+      containers: []

@@ -1,0 +1,21 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: todolist-dev
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/ashwinimhasrup/argocd-TodoList.git
+    targetRevision: feature/test2
+    path: k8s/dev
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argo-dev
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true

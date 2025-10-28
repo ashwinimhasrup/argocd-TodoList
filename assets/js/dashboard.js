@@ -12,7 +12,7 @@ if (hour >= 4 && hour < 12 && ampm === 'am') {
 } else if (hour >= 00 && hour <= 04 && ampm === 'am') {
     greetingUser.innerHTML = 'Good Night';
 } else {
-    greetingUser.textContent = 'Good Evening hii (hotfix),';
+    greetingUser.textContent = 'Good Evening from cognologix,';
 }
 
 // add task section

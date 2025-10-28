@@ -8,6 +8,11 @@ on:
       - 'feature/**'
       - 'release/**'
       - 'hotfix/**'
+    paths-ignore:
+      - 'k8s/**'
+      - 'argocd-apps/**'
+      - '**.md'
+      - '.gitignore'
     tags:
       - 'v*'
 
@@ -32,8 +37,8 @@ env:
 
 jobs:
   build-for-pr:
-    name: Build Docker Image (CI only for PR)
-    runs-on: ubuntu-latest
+    name: pull_request (CI only for PR)
+    runs-on: self-hosted
     if: github.event_name == 'pull_request'
 
     steps:
@@ -49,10 +54,10 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to Docker Hub
+      - name: Log in to Docker Registry
         uses: docker/login-action@v3
         with:
-          registry: docker.io
+          registry: ${{ env.DOCKER_REGISTRY }}
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
@@ -62,7 +67,7 @@ jobs:
           context: .
           push: false
           tags: |
-            docker.io/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}
+            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}
 
       - name: CI Only Message
         run: |
@@ -70,7 +75,7 @@ jobs:
           echo "🧪 Code review and testing is done."
 
   build-and-push-dev:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     if: |
       startsWith(github.ref, 'refs/heads/hotfix/') ||
       startsWith(github.ref, 'refs/heads/feature/') ||
@@ -95,38 +100,31 @@ jobs:
         run: |
           SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
           echo "tag=${SHORT_SHA}" >> $GITHUB_OUTPUT
-          echo "🏷️ Image tag: ${SHORT_SHA}"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to Docker Hub
+      - name: Log in to Docker Registry
         uses: docker/login-action@v3
         with:
-          registry: docker.io
+          registry: ${{ env.DOCKER_REGISTRY }}
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build and push Docker image to Docker Hub
+      - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
           tags: |
-            docker.io/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}
-            docker.io/${{ env.IMAGE_NAME }}:dev-latest
-          cache-from: type=registry,ref=docker.io/${{ env.IMAGE_NAME }}:buildcache
-          cache-to: type=registry,ref=docker.io/${{ env.IMAGE_NAME }}:buildcache,mode=max
-
-      - name: Image pushed notification
-        run: |
-          echo "✅ Docker image pushed to Docker Hub successfully!"
-          echo "📦 Image: docker.io/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}"
-          echo "🔖 Also tagged as: dev-latest"
+            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}
+            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:dev-latest
+          cache-from: type=registry,ref=${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
+          cache-to: type=registry,ref=${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
 
   update-manifests-dev:
     needs: build-and-push-dev
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - name: Checkout manifests repo (same branch as source)
         uses: actions/checkout@v4
@@ -138,34 +136,34 @@ jobs:
 
       - name: Configure Git
         run: |
-          git config user.name "GitHub Actions Bot"
-          git config user.email "actions@github.com"
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
 
-      - name: Pull latest changes
+      - name: Install yq (no sudo)
         run: |
-          git pull origin ${{ needs.build-and-push-dev.outputs.branch-name }} --no-rebase || true
+          mkdir -p $HOME/.local/bin
+          wget -q https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O $HOME/.local/bin/yq
+          chmod +x $HOME/.local/bin/yq
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
 
-      - name: Update image tag in Dev manifest
+      - name: Update Dev manifest (nodetodo only)
         run: |
-          sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
-          sudo chmod +x /usr/bin/yq
-          yq eval '.spec.template.spec.containers[0].image = "docker.io/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-dev.outputs.image-tag }}"' -i k8s/dev/dev.yaml
+          # Update only the nodetodo container image
+          yq eval '(.spec.template.spec.containers[] | select(.name == "nodetodo").image) = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-dev.outputs.image-tag }}"' -i k8s/dev/nodetodo.yaml
+          yq eval '.spec.source.targetRevision = "${{ needs.build-and-push-dev.outputs.branch-name }}"' -i argocd-apps/dev-app.yaml
 
       - name: Commit and push changes
         run: |
-          git add k8s/dev/dev.yaml
-          git diff --staged --quiet || git commit -m "chore: update dev image to ${{ needs.build-and-push-dev.outputs.image-tag }}"
-          git push origin ${{ needs.build-and-push-dev.outputs.branch-name }}
-
-      - name: ArgoCD Auto-Sync Notification
-        run: |
-          echo "✅ Dev manifest updated successfully!"
-          echo "🌿 Branch: ${{ needs.build-and-push-dev.outputs.branch-name }}"
-          echo "🔄 ArgoCD will auto-sync changes to namespace: argo-dev"
-          echo "📦 Image: docker.io/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-dev.outputs.image-tag }}"
+          if git diff --quiet; then
+            echo "⚠️ No changes detected"
+          else
+            git add k8s/dev/nodetodo.yaml argocd-apps/dev-app.yaml
+            git commit -m "chore: update dev nodetodo image to ${{ needs.build-and-push-dev.outputs.image-tag }} [skip ci]"
+            git push origin ${{ needs.build-and-push-dev.outputs.branch-name }}
+          fi
 
   build-and-push-qa:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     if: github.ref == 'refs/heads/develop'
     outputs:
       image-tag: ${{ steps.set-tag.outputs.tag }}
@@ -180,47 +178,37 @@ jobs:
         run: |
           BRANCH_NAME=${GITHUB_REF#refs/heads/}
           echo "branch=${BRANCH_NAME}" >> $GITHUB_OUTPUT
-          echo "📌 Source branch: ${BRANCH_NAME}"
 
       - name: Set image tag
         id: set-tag
         run: |
           SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
           echo "tag=${SHORT_SHA}" >> $GITHUB_OUTPUT
-          echo "🏷️ Image tag: ${SHORT_SHA}"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to Docker Hub
+      - name: Log in to Docker Registry
         uses: docker/login-action@v3
         with:
-          registry: docker.io
+          registry: ${{ env.DOCKER_REGISTRY }}
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build and push Docker image to Docker Hub
+      - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
           tags: |
-            docker.io/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}
-            docker.io/${{ env.IMAGE_NAME }}:qa-latest
-          cache-from: type=registry,ref=docker.io/${{ env.IMAGE_NAME }}:buildcache
-          cache-to: type=registry,ref=docker.io/${{ env.IMAGE_NAME }}:buildcache,mode=max
-
-      - name: Image pushed notification
-        run: |
-          echo "✅ Docker image pushed to Docker Hub successfully!"
-          echo "📦 Image: docker.io/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}"
-          echo "🔖 Also tagged as: qa-latest"
+            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}
+            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:qa-latest
 
   update-manifests-qa:
     needs: build-and-push-qa
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
-      - name: Checkout manifests repo (develop branch)
+      - name: Checkout manifests repo
         uses: actions/checkout@v4
         with:
           repository: ${{ env.MANIFEST_REPO }}
@@ -230,38 +218,38 @@ jobs:
 
       - name: Configure Git
         run: |
-          git config user.name "GitHub Actions Bot"
-          git config user.email "actions@github.com"
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
 
-      - name: Pull latest changes
+      - name: Install yq (no sudo)
         run: |
-          git pull origin ${{ needs.build-and-push-qa.outputs.branch-name }} --no-rebase || true
+          mkdir -p $HOME/.local/bin
+          wget -q https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O $HOME/.local/bin/yq
+          chmod +x $HOME/.local/bin/yq
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
 
-      - name: Update QA manifest
+      - name: Update QA manifest (nodetodo only)
         run: |
-          sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
-          sudo chmod +x /usr/bin/yq
-          yq eval '.spec.template.spec.containers[0].image = "docker.io/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-qa.outputs.image-tag }}"' -i k8s/qa/qa.yaml
+          # Update only the nodetodo container image
+          yq eval '(.spec.template.spec.containers[] | select(.name == "nodetodo").image) = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-qa.outputs.image-tag }}"' -i k8s/qa/nodetodo.yaml
 
-      - name: Commit and push changes
+      - name: Commit and push
         run: |
-          git add k8s/qa/qa.yaml
-          git diff --staged --quiet || git commit -m "chore: update QA image to ${{ needs.build-and-push-qa.outputs.image-tag }}"
-          git push origin ${{ needs.build-and-push-qa.outputs.branch-name }}
-
-      - name: ArgoCD Auto-Sync Notification
-        run: |
-          echo "✅ QA manifest updated!"
-          echo "🌿 Branch: ${{ needs.build-and-push-qa.outputs.branch-name }}"
-          echo "🔄 ArgoCD will auto-sync to namespace: argo-qa"
-          echo "📦 Image: docker.io/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-qa.outputs.image-tag }}"
+          if git diff --quiet; then
+            echo "⚠️ No changes"
+          else
+            git add k8s/qa/qa.yaml
+            git commit -m "chore: update QA nodetodo image to ${{ needs.build-and-push-qa.outputs.image-tag }} [skip ci]"
+            git push origin ${{ needs.build-and-push-qa.outputs.branch-name }}
+          fi
 
   build-and-push-staging:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     if: startsWith(github.ref, 'refs/heads/release/')
     outputs:
       image-tag: ${{ steps.set-tag.outputs.tag }}
       branch-name: ${{ steps.extract-branch.outputs.branch }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -271,47 +259,37 @@ jobs:
         run: |
           BRANCH_NAME=${GITHUB_REF#refs/heads/}
           echo "branch=${BRANCH_NAME}" >> $GITHUB_OUTPUT
-          echo "📌 Source branch: ${BRANCH_NAME}"
       
       - name: Set image tag
         id: set-tag
         run: |
           SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
           echo "tag=${SHORT_SHA}" >> $GITHUB_OUTPUT
-          echo "🏷️ Image tag: ${SHORT_SHA}"
       
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       
-      - name: Log in to Docker Hub
+      - name: Log in to Docker Registry
         uses: docker/login-action@v3
         with:
-          registry: docker.io
+          registry: ${{ env.DOCKER_REGISTRY }}
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
       
-      - name: Build and push Docker image to Docker Hub
+      - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
           tags: |
-            docker.io/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}
-            docker.io/${{ env.IMAGE_NAME }}:staging-latest
-          cache-from: type=registry,ref=docker.io/${{ env.IMAGE_NAME }}:buildcache
-          cache-to: type=registry,ref=docker.io/${{ env.IMAGE_NAME }}:buildcache,mode=max
-
-      - name: Image pushed notification
-        run: |
-          echo "✅ Docker image pushed to Docker Hub successfully!"
-          echo "📦 Image: docker.io/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}"
-          echo "🔖 Also tagged as: staging-latest"
+            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}
+            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:staging-latest
 
   update-manifests-staging:
     needs: build-and-push-staging
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
-      - name: Checkout manifests repo (release branch)
+      - name: Checkout manifests repo
         uses: actions/checkout@v4
         with:
           repository: ${{ env.MANIFEST_REPO }}
@@ -321,37 +299,38 @@ jobs:
       
       - name: Configure Git
         run: |
-          git config user.name "GitHub Actions Bot"
-          git config user.email "actions@github.com"
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
       
-      - name: Pull latest changes
+      - name: Install yq (no sudo)
         run: |
-          git pull origin ${{ needs.build-and-push-staging.outputs.branch-name }} --no-rebase || true
+          mkdir -p $HOME/.local/bin
+          wget -q https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O $HOME/.local/bin/yq
+          chmod +x $HOME/.local/bin/yq
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
       
-      - name: Update staging manifest
+      - name: Update Staging manifest (nodetodo only)
         run: |
-          sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
-          sudo chmod +x /usr/bin/yq
-          yq eval '.spec.template.spec.containers[0].image = "docker.io/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-staging.outputs.image-tag }}"' -i k8s/staging/staging.yaml
+          # Update only the nodetodo container image
+          yq eval '(.spec.template.spec.containers[] | select(.name == "nodetodo").image) = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-staging.outputs.image-tag }}"' -i k8s/staging/staging.yaml
+          yq eval '.spec.source.targetRevision = "${{ needs.build-and-push-staging.outputs.branch-name }}"' -i argocd-apps/staging-app.yaml
       
-      - name: Commit and push changes
+      - name: Commit and push
         run: |
-          git add k8s/staging/staging.yaml
-          git diff --staged --quiet || git commit -m "chore: update staging image to ${{ needs.build-and-push-staging.outputs.image-tag }}"
-          git push origin ${{ needs.build-and-push-staging.outputs.branch-name }}
-      
-      - name: ArgoCD Auto-Sync Notification
-        run: |
-          echo "✅ Staging manifest updated!"
-          echo "🌿 Branch: ${{ needs.build-and-push-staging.outputs.branch-name }}"
-          echo "🔄 ArgoCD will auto-sync to namespace: argo-staging"
-          echo "📦 Image: docker.io/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-staging.outputs.image-tag }}"
+          if git diff --quiet; then
+            echo "⚠️ No changes"
+          else
+            git add k8s/staging/staging.yaml argocd-apps/staging-app.yaml
+            git commit -m "chore: update staging nodetodo image to ${{ needs.build-and-push-staging.outputs.image-tag }} [skip ci]"
+            git push origin ${{ needs.build-and-push-staging.outputs.branch-name }}
+          fi
 
   build-and-push-prod:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     if: startsWith(github.ref, 'refs/tags/v')
     outputs:
       image-tag: ${{ steps.set-tag.outputs.tag }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -361,41 +340,32 @@ jobs:
         run: |
           SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
           echo "tag=${SHORT_SHA}" >> $GITHUB_OUTPUT
-          echo "🏷️ Image tag: ${SHORT_SHA}"
       
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       
-      - name: Log in to Docker Hub
+      - name: Log in to Docker Registry
         uses: docker/login-action@v3
         with:
-          registry: docker.io
+          registry: ${{ env.DOCKER_REGISTRY }}
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
       
-      - name: Build and push Docker image to Docker Hub
+      - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
           tags: |
-            docker.io/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}
-            docker.io/${{ env.IMAGE_NAME }}:prod-latest
-            docker.io/${{ env.IMAGE_NAME }}:latest
-          cache-from: type=registry,ref=docker.io/${{ env.IMAGE_NAME }}:buildcache
-          cache-to: type=registry,ref=docker.io/${{ env.IMAGE_NAME }}:buildcache,mode=max
-
-      - name: Image pushed notification
-        run: |
-          echo "✅ Docker image pushed to Docker Hub successfully!"
-          echo "📦 Image: docker.io/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}"
-          echo "🔖 Also tagged as: prod-latest, latest"
+            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}
+            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:prod-latest
+            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
 
   update-manifests-prod:
     needs: build-and-push-prod
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
-      - name: Checkout manifests repo (main branch for prod)
+      - name: Checkout manifests repo
         uses: actions/checkout@v4
         with:
           repository: ${{ env.MANIFEST_REPO }}
@@ -405,28 +375,27 @@ jobs:
       
       - name: Configure Git
         run: |
-          git config user.name "GitHub Actions Bot"
-          git config user.email "actions@github.com"
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
       
-      - name: Pull latest changes
+      - name: Install yq (no sudo)
         run: |
-          git pull origin main --no-rebase || true
+          mkdir -p $HOME/.local/bin
+          wget -q https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O $HOME/.local/bin/yq
+          chmod +x $HOME/.local/bin/yq
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
       
-      - name: Update prod manifest
+      - name: Update Prod manifest (nodetodo only)
         run: |
-          sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
-          sudo chmod +x /usr/bin/yq
-          yq eval '.spec.template.spec.containers[0].image = "docker.io/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-prod.outputs.image-tag }}"' -i k8s/prod/prod.yaml
+          # Update only the nodetodo container image
+          yq eval '(.spec.template.spec.containers[] | select(.name == "nodetodo").image) = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-prod.outputs.image-tag }}"' -i k8s/prod/prod.yaml
       
-      - name: Commit and push changes
+      - name: Commit and push
         run: |
-          git add k8s/prod/prod.yaml
-          git diff --staged --quiet || git commit -m "chore: update prod image to ${{ needs.build-and-push-prod.outputs.image-tag }}"
-          git push origin main
-      
-      - name: ArgoCD Auto-Sync Notification
-        run: |
-          echo "✅ Prod manifest updated!"
-          echo "🌿 Branch: main"
-          echo "🔄 ArgoCD will auto-sync to namespace: argo-prod"
-          echo "📦 Image: docker.io/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-prod.outputs.image-tag }}"
+          if git diff --quiet; then
+            echo "⚠️ No changes"
+          else
+            git add k8s/prod/prod.yaml
+            git commit -m "chore: update prod nodetodo image to ${{ needs.build-and-push-prod.outputs.image-tag }} [skip ci]"
+            git push origin main
+          fi

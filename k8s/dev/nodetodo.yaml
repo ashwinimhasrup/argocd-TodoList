@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: nodetodo
-          image: docker.io/ashwini73/todolist-app:75ea440
+          image: docker.io/ashwini73/todolist-app:458a639
           ports:
             - containerPort: 4000
           env:

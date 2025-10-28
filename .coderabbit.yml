@@ -1,0 +1,40 @@
+version: 1
+
+# 👇 Define when CodeRabbit should run
+triggers:
+  pull_request:
+    branches:
+      include:
+        - main
+        - develop
+        - 'feature/**'
+        - 'release/**'
+        - 'hotfix/**'
+
+# 👇 Code review behavior
+review:
+  enabled: true              # Enables automatic review
+  auto_review: true          # Run automatically when PR is created or updated
+  include_draft: false       # Skip draft PRs
+  summary: true              # Adds a summarized comment in PR
+  inline_comments: true      # Adds inline comments for detected issues
+  approval: false            # Bot won’t auto-approve PRs
+  max_comments: 50           # Optional: limit the number of inline comments
+
+# 👇 Optional: tell it which files to ignore
+ignore:
+  - '**/*.md'
+  - '**/*.yaml'
+  - '**/*.yml'
+  - '**/*.json'
+  - '**/*.txt'
+  - '.gitignore'
+  - '.github/**'
+  - 'docs/**'
+
+# 👇 (Optional) Custom review tone and rules
+settings:
+  tone: friendly
+  verbosity: medium
+  suggestions: true
+  summarize_findings: true

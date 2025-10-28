@@ -9,8 +9,6 @@ on:
       - 'release/**'
       - 'hotfix/**'
     paths-ignore:
-      - 'k8s/**'
-      - 'argocd-apps/**'
       - '**.md'
       - '.gitignore'
     tags:
@@ -24,13 +22,20 @@ on:
       - 'release/**'
       - 'hotfix/**'
     types: [opened, synchronize, reopened]
-
+    
   workflow_dispatch:
     inputs:
       environment:
         description: 'Deploy environment'
         required: true
         default: 'dev'
+
+  # Trigger when new branches are created
+  create:
+    branches:
+      - 'feature/**'
+      - 'release/**'
+      - 'hotfix/**'
 
 env:
   NODE_VERSION: '18'
@@ -39,6 +44,83 @@ env:
   MANIFEST_REPO: ashwinimhasrup/argocd-TodoList
 
 jobs:
+  # Auto-create and setup manifest repo branches for feature/release/hotfix
+  setup-manifest-branch:
+    runs-on: self-hosted
+    if: |
+      github.event_name == 'create' && (
+        startsWith(github.ref, 'refs/heads/feature/') ||
+        startsWith(github.ref, 'refs/heads/release/') ||
+        startsWith(github.ref, 'refs/heads/hotfix/')
+      )
+    steps:
+      - name: Extract branch name
+        id: extract-branch
+        run: |
+          BRANCH_NAME=${GITHUB_REF#refs/heads/}
+          echo "branch=${BRANCH_NAME}" >> $GITHUB_OUTPUT
+          echo "🎯 New branch detected: ${BRANCH_NAME}"
+
+      - name: Checkout manifests repo (main)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.MANIFEST_REPO }}
+          token: ${{ secrets.GIT_TOKEN }}
+          ref: main
+          fetch-depth: 0
+
+      - name: Create matching branch in manifest repo
+        run: |
+          BRANCH_NAME="${{ steps.extract-branch.outputs.branch }}"
+          
+          # Check if branch already exists
+          if git ls-remote --heads origin "${BRANCH_NAME}" | grep -q "${BRANCH_NAME}"; then
+            echo "✅ Branch ${BRANCH_NAME} already exists in manifest repo"
+          else
+            echo "🔨 Creating new branch ${BRANCH_NAME} in manifest repo"
+            git checkout -b "${BRANCH_NAME}"
+            git push origin "${BRANCH_NAME}"
+            echo "✅ Branch ${BRANCH_NAME} created successfully"
+          fi
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+
+      - name: Install yq
+        run: |
+          mkdir -p $HOME/.local/bin
+          wget -q https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O $HOME/.local/bin/yq
+          chmod +x $HOME/.local/bin/yq
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Update ArgoCD app targetRevision for the branch
+        run: |
+          BRANCH_NAME="${{ steps.extract-branch.outputs.branch }}"
+          git checkout "${BRANCH_NAME}"
+          
+          # Update appropriate ArgoCD app based on branch type
+          if [[ "${BRANCH_NAME}" == feature/* ]] || [[ "${BRANCH_NAME}" == hotfix/* ]]; then
+            echo "📝 Updating dev-app.yaml to track ${BRANCH_NAME}"
+            yq eval '.spec.source.targetRevision = "'${BRANCH_NAME}'"' -i argocd-apps/dev-app.yaml
+            APP_FILE="argocd-apps/dev-app.yaml"
+          elif [[ "${BRANCH_NAME}" == release/* ]]; then
+            echo "📝 Updating staging-app.yaml to track ${BRANCH_NAME}"
+            yq eval '.spec.source.targetRevision = "'${BRANCH_NAME}'"' -i argocd-apps/staging-app.yaml
+            APP_FILE="argocd-apps/staging-app.yaml"
+          fi
+
+          # Commit and push if changes were made
+          if git diff --quiet; then
+            echo "⚠️ No changes needed"
+          else
+            git add "${APP_FILE}"
+            git commit -m "chore: setup ArgoCD to track ${BRANCH_NAME} [skip ci]"
+            git push origin "${BRANCH_NAME}"
+            echo "✅ ArgoCD configured to sync from ${BRANCH_NAME}"
+          fi
+
   build-for-pr:
     name: pull_request (CI only for PR)
     runs-on: self-hosted
@@ -80,8 +162,8 @@ jobs:
   build-and-push-dev:
     runs-on: self-hosted
     if: |
-      startsWith(github.ref, 'refs/heads/hotfix/') ||
-      startsWith(github.ref, 'refs/heads/feature/') ||
+      (startsWith(github.ref, 'refs/heads/hotfix/') && github.event_name == 'push') ||
+      (startsWith(github.ref, 'refs/heads/feature/') && github.event_name == 'push') ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'dev')
     outputs:
       image-tag: ${{ steps.set-tag.outputs.tag }}
@@ -151,8 +233,7 @@ jobs:
 
       - name: Update Dev manifest (nodetodo only)
         run: |
-          # Find and update only the nodetodo container image using sed
-          sed -i '/name: nodetodo/,/image:/ s|image:.*|image: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-dev.outputs.image-tag }}|' k8s/dev/dev.yaml
+          yq eval '(.spec.template.spec.containers[] | select(.name == "nodetodo").image) = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-dev.outputs.image-tag }}"' -i k8s/dev/nodetodo.yaml
           yq eval '.spec.source.targetRevision = "${{ needs.build-and-push-dev.outputs.branch-name }}"' -i argocd-apps/dev-app.yaml
 
       - name: Commit and push changes
@@ -160,14 +241,14 @@ jobs:
           if git diff --quiet; then
             echo "⚠️ No changes detected"
           else
-            git add k8s/dev/dev.yaml argocd-apps/dev-app.yaml
+            git add k8s/dev/nodetodo.yaml argocd-apps/dev-app.yaml
             git commit -m "chore: update dev nodetodo image to ${{ needs.build-and-push-dev.outputs.image-tag }} [skip ci]"
             git push origin ${{ needs.build-and-push-dev.outputs.branch-name }}
           fi
 
   build-and-push-qa:
     runs-on: self-hosted
-    if: github.ref == 'refs/heads/develop'
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
     outputs:
       image-tag: ${{ steps.set-tag.outputs.tag }}
       branch-name: ${{ steps.extract-branch.outputs.branch }}
@@ -233,24 +314,22 @@ jobs:
 
       - name: Update QA manifest (nodetodo only)
         run: |
-          # Find and update only the nodetodo container image using sed
-          sed -i '/name: nodetodo/,/image:/ s|image:.*|image: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-qa.outputs.image-tag }}|' k8s/qa/qa.yaml
+          yq eval '(.spec.template.spec.containers[] | select(.name == "nodetodo").image) = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-qa.outputs.image-tag }}"' -i k8s/qa/nodetodo.yaml
+          yq eval '.spec.source.targetRevision = "${{ needs.build-and-push-qa.outputs.branch-name }}"' -i argocd-apps/qa-app.yaml
 
       - name: Commit and push
         run: |
           if git diff --quiet; then
             echo "⚠️ No changes"
           else
-            git add k8s/qa/qa.yaml
+            git add k8s/qa/nodetodo.yaml argocd-apps/qa-app.yaml
             git commit -m "chore: update QA nodetodo image to ${{ needs.build-and-push-qa.outputs.image-tag }} [skip ci]"
             git push origin ${{ needs.build-and-push-qa.outputs.branch-name }}
           fi
 
   build-and-push-staging:
     runs-on: self-hosted
-    if: |
-      startsWith(github.ref, 'refs/heads/release/') ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
+    if: startsWith(github.ref, 'refs/heads/release/') && github.event_name == 'push'
     outputs:
       image-tag: ${{ steps.set-tag.outputs.tag }}
       branch-name: ${{ steps.extract-branch.outputs.branch }}
@@ -259,18 +338,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       
-      - name: Debug - Show trigger info
-        run: |
-          echo "🔍 GitHub Ref: ${{ github.ref }}"
-          echo "🔍 Event Name: ${{ github.event_name }}"
-          echo "🔍 Branch Check: startsWith('${{ github.ref }}', 'refs/heads/release/')"
-      
       - name: Extract branch name
         id: extract-branch
         run: |
           BRANCH_NAME=${GITHUB_REF#refs/heads/}
           echo "branch=${BRANCH_NAME}" >> $GITHUB_OUTPUT
-          echo "📌 Extracted branch: ${BRANCH_NAME}"
+          echo "📌 Building for staging from: ${BRANCH_NAME}"
       
       - name: Set image tag
         id: set-tag
@@ -323,8 +396,7 @@ jobs:
       
       - name: Update Staging manifest (nodetodo only)
         run: |
-          # Find and update only the nodetodo container image using sed
-          sed -i '/name: nodetodo/,/image:/ s|image:.*|image: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-staging.outputs.image-tag }}|' k8s/staging/staging.yaml
+          yq eval '(.spec.template.spec.containers[] | select(.name == "nodetodo").image) = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-staging.outputs.image-tag }}"' -i k8s/staging/nodetodo.yaml
           yq eval '.spec.source.targetRevision = "${{ needs.build-and-push-staging.outputs.branch-name }}"' -i argocd-apps/staging-app.yaml
       
       - name: Commit and push
@@ -332,7 +404,7 @@ jobs:
           if git diff --quiet; then
             echo "⚠️ No changes"
           else
-            git add k8s/staging/staging.yaml argocd-apps/staging-app.yaml
+            git add k8s/staging/nodetodo.yaml argocd-apps/staging-app.yaml
             git commit -m "chore: update staging nodetodo image to ${{ needs.build-and-push-staging.outputs.image-tag }} [skip ci]"
             git push origin ${{ needs.build-and-push-staging.outputs.branch-name }}
           fi
@@ -399,15 +471,15 @@ jobs:
       
       - name: Update Prod manifest (nodetodo only)
         run: |
-          # Find and update only the nodetodo container image using sed
-          sed -i '/name: nodetodo/,/image:/ s|image:.*|image: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-prod.outputs.image-tag }}|' k8s/prod/prod.yaml
-      
+          yq eval '(.spec.template.spec.containers[] | select(.name == "nodetodo").image) = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-prod.outputs.image-tag }}"' -i k8s/prod/nodetodo.yaml
+          yq eval '.spec.source.targetRevision = "main"' -i argocd-apps/prod-app.yaml
+
       - name: Commit and push
         run: |
           if git diff --quiet; then
             echo "⚠️ No changes"
           else
-            git add k8s/prod/prod.yaml
+            git add k8s/prod/nodetodo.yaml argocd-apps/prod-app.yaml
             git commit -m "chore: update prod nodetodo image to ${{ needs.build-and-push-prod.outputs.image-tag }} [skip ci]"
             git push origin main
           fi

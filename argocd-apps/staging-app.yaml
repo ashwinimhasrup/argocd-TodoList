@@ -7,7 +7,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/ashwinimhasrup/argocd-TodoList.git
-    targetRevision: release/v1.0 # This will be updated by pipeline
+    targetRevision: release/v1.1 # This will be updated by pipeline
     path: k8s/staging
   destination:
     server: https://kubernetes.default.svc

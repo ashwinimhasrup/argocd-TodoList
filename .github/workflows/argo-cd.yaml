@@ -234,7 +234,7 @@ jobs:
       - name: Update QA manifest (nodetodo only)
         run: |
           # Update only the nodetodo container image
-          yq eval '(.spec.template.spec.containers[] | select(.name == "nodetodo").image) = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-qa.outputs.image-tag }}"' -i k8s/qa/nodetodo.yml
+          yq eval '(.spec.template.spec.containers[] | select(.name == "nodetodo").image) = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-qa.outputs.image-tag }}"' -i k8s/qa/nodetodo.yaml
           yq eval '.spec.source.targetRevision = "${{ needs.build-and-push-dev.outputs.branch-name }}"' -i argocd-apps/qa-app.yaml
 
       - name: Commit and push

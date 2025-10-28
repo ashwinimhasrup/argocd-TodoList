@@ -17,14 +17,14 @@ on:
       - 'v*'
 
   pull_request:
-  branches:
-    - main
-    - develop
-    - 'feature/**'
-    - 'release/**'
-    - 'hotfix/**'
-  types: [opened, synchronize, reopened]
-
+    branches:
+      - main
+      - develop
+      - 'feature/**'
+      - 'release/**'
+      - 'hotfix/**'
+    types: [opened, synchronize, reopened]
+    
   workflow_dispatch:
     inputs:
       environment:

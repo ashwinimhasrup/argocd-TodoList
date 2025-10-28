@@ -14,7 +14,7 @@ spec:
         app: todolist
     spec:
       containers:
-        - name: todolist
+        - name: nodetodo
           image: todo:1.0
           ports:
             - containerPort: 4000

@@ -32,6 +32,11 @@ on:
         required: true
         default: 'dev'
 
+  # ✅ NEW: Trigger when new release branch is created
+  create:
+    branches:
+      - 'release/**'
+
 env:
   NODE_VERSION: '18'
   DOCKER_REGISTRY: docker.io
@@ -39,6 +44,54 @@ env:
   MANIFEST_REPO: ashwinimhasrup/argocd-TodoList
 
 jobs:
+  # ✅ NEW JOB: Auto-update ArgoCD targetRevision for new release branches
+  update-argocd-release-branch:
+    runs-on: self-hosted
+    if: github.event_name == 'create' && startsWith(github.ref, 'refs/heads/release/')
+    steps:
+      - name: Extract new release branch name
+        id: extract-branch
+        run: |
+          BRANCH_NAME=${GITHUB_REF#refs/heads/}
+          echo "branch=${BRANCH_NAME}" >> $GITHUB_OUTPUT
+          echo "🎯 New release branch detected: ${BRANCH_NAME}"
+
+      - name: Checkout manifests repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.MANIFEST_REPO }}
+          token: ${{ secrets.GIT_TOKEN }}
+          ref: ${{ steps.extract-branch.outputs.branch }}
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+
+      - name: Install yq
+        run: |
+          mkdir -p $HOME/.local/bin
+          wget -q https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O $HOME/.local/bin/yq
+          chmod +x $HOME/.local/bin/yq
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Update ArgoCD staging app targetRevision
+        run: |
+          echo "📝 Updating staging-app.yaml to track ${{ steps.extract-branch.outputs.branch }}"
+          yq eval '.spec.source.targetRevision = "${{ steps.extract-branch.outputs.branch }}"' -i argocd-apps/staging-app.yaml
+
+      - name: Commit and push ArgoCD app update
+        run: |
+          if git diff --quiet; then
+            echo "⚠️ No changes needed"
+          else
+            git add argocd-apps/staging-app.yaml
+            git commit -m "chore: update staging targetRevision to ${{ steps.extract-branch.outputs.branch }} [skip ci]"
+            git push origin ${{ steps.extract-branch.outputs.branch }}
+            echo "✅ ArgoCD will now sync from ${{ steps.extract-branch.outputs.branch }}"
+          fi
+
   build-for-pr:
     name: pull_request (CI only for PR)
     runs-on: self-hosted
@@ -151,7 +204,6 @@ jobs:
 
       - name: Update Dev manifest (nodetodo only)
         run: |
-          # Update only the nodetodo container image
           yq eval '(.spec.template.spec.containers[] | select(.name == "nodetodo").image) = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-dev.outputs.image-tag }}"' -i k8s/dev/nodetodo.yaml
           yq eval '.spec.source.targetRevision = "${{ needs.build-and-push-dev.outputs.branch-name }}"' -i argocd-apps/dev-app.yaml
 
@@ -233,9 +285,8 @@ jobs:
 
       - name: Update QA manifest (nodetodo only)
         run: |
-          # Update only the nodetodo container image
           yq eval '(.spec.template.spec.containers[] | select(.name == "nodetodo").image) = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-qa.outputs.image-tag }}"' -i k8s/qa/nodetodo.yaml
-          yq eval '.spec.source.targetRevision = "${{ needs.build-and-push-dev.outputs.branch-name }}"' -i argocd-apps/qa-app.yaml
+          yq eval '.spec.source.targetRevision = "${{ needs.build-and-push-qa.outputs.branch-name }}"' -i argocd-apps/qa-app.yaml
 
       - name: Commit and push
         run: |
@@ -249,7 +300,7 @@ jobs:
 
   build-and-push-staging:
     runs-on: self-hosted
-    if: startsWith(github.ref, 'refs/heads/release/')
+    if: startsWith(github.ref, 'refs/heads/release/') && github.event_name == 'push'
     outputs:
       image-tag: ${{ steps.set-tag.outputs.tag }}
       branch-name: ${{ steps.extract-branch.outputs.branch }}
@@ -315,7 +366,6 @@ jobs:
       
       - name: Update Staging manifest (nodetodo only)
         run: |
-          # Update only the nodetodo container image
           yq eval '(.spec.template.spec.containers[] | select(.name == "nodetodo").image) = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-staging.outputs.image-tag }}"' -i k8s/staging/nodetodo.yaml
           yq eval '.spec.source.targetRevision = "${{ needs.build-and-push-staging.outputs.branch-name }}"' -i argocd-apps/staging-app.yaml
       
@@ -391,16 +441,15 @@ jobs:
       
       - name: Update Prod manifest (nodetodo only)
         run: |
-          # Update only the nodetodo container image
           yq eval '(.spec.template.spec.containers[] | select(.name == "nodetodo").image) = "${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push-prod.outputs.image-tag }}"' -i k8s/prod/nodetodo.yaml
-          yq eval '.spec.source.targetRevision = "${{ needs.build-and-push-staging.outputs.branch-name }}"' -i argocd-apps/prod-app.yaml
+          yq eval '.spec.source.targetRevision = "main"' -i argocd-apps/prod-app.yaml
 
       - name: Commit and push
         run: |
           if git diff --quiet; then
             echo "⚠️ No changes"
           else
-            git add k8s/prod/nodetodo.yaml
+            git add k8s/prod/nodetodo.yaml argocd-apps/prod-app.yaml
             git commit -m "chore: update prod nodetodo image to ${{ needs.build-and-push-prod.outputs.image-tag }} [skip ci]"
             git push origin main
           fi

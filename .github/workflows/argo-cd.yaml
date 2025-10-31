@@ -138,15 +138,13 @@ jobs:
             export PATH=$HOME/.local/bin:$PATH
           fi
           
-          # Login to ArgoCD
-          argocd login ${{ secrets.ARGO_SERVER_URL }} \
-            --username ${{ secrets.ARGO_USER }} \
-            --password ${{ secrets.ARGO_PASS }} \
-            --insecure
-          
-          # Refresh the application to pick up new targetRevision
+          # Refresh using token authentication
           echo "🔄 Refreshing ArgoCD app: ${{ steps.update-argocd-app.outputs.app_name }}"
-          argocd app get ${{ steps.update-argocd-app.outputs.app_name }} --refresh
+          argocd app get ${{ steps.update-argocd-app.outputs.app_name }} \
+            --server ${{ secrets.ARGOCD_SERVER }} \
+            --auth-token ${{ secrets.ARGOCD_AUTH_TOKEN }} \
+            --grpc-web \
+            --refresh
           
           echo "✅ ArgoCD application refreshed successfully"
 
@@ -287,12 +285,13 @@ jobs:
             sudo mv /tmp/argocd /usr/local/bin/argocd
           fi
           
-          argocd login ${{ secrets.ARGO_SERVER_URL }} \
-            --username ${{ secrets.ARGO_USER }} \
-            --password ${{ secrets.ARGO_PASS }} \
-            --insecure
+          # Use token authentication instead of username/password
+          argocd app get dev-app \
+            --server ${{ secrets.ARGOCD_SERVER }} \
+            --auth-token ${{ secrets.ARGOCD_AUTH_TOKEN }} \
+            --grpc-web \
+            --refresh
           
-          argocd app get dev-app --refresh
           echo "✅ ArgoCD dev-app refreshed"
 
   build-and-push-qa:
@@ -367,14 +366,35 @@ jobs:
           yq eval '.spec.source.targetRevision = "${{ needs.build-and-push-qa.outputs.branch-name }}"' -i argocd-apps/qa-app.yaml
 
       - name: Commit and push
+        id: commit-changes
         run: |
           if git diff --quiet; then
             echo "⚠️ No changes"
+            echo "changed=false" >> $GITHUB_OUTPUT
           else
             git add k8s/qa/nodetodo.yaml argocd-apps/qa-app.yaml
             git commit -m "chore: update QA nodetodo image to ${{ needs.build-and-push-qa.outputs.image-tag }} [skip ci]"
             git push origin ${{ needs.build-and-push-qa.outputs.branch-name }}
+            echo "changed=true" >> $GITHUB_OUTPUT
           fi
+
+      - name: Refresh ArgoCD Application
+        if: steps.commit-changes.outputs.changed == 'true'
+        run: |
+          if ! command -v argocd &> /dev/null; then
+            curl -sSL -o /tmp/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+            chmod +x /tmp/argocd
+            sudo mv /tmp/argocd /usr/local/bin/argocd
+          fi
+          
+          # Use token authentication
+          argocd app get qa-app \
+            --server ${{ secrets.ARGOCD_SERVER }} \
+            --auth-token ${{ secrets.ARGOCD_AUTH_TOKEN }} \
+            --grpc-web \
+            --refresh
+          
+          echo "✅ ArgoCD qa-app refreshed"
 
   build-and-push-staging:
     runs-on: self-hosted
@@ -470,12 +490,13 @@ jobs:
             sudo mv /tmp/argocd /usr/local/bin/argocd
           fi
           
-          argocd login ${{ secrets.ARGO_SERVER_URL }} \
-            --username ${{ secrets.ARGO_USER }} \
-            --password ${{ secrets.ARGO_PASS }} \
-            --insecure
+          # Use token authentication
+          argocd app get staging-app \
+            --server ${{ secrets.ARGOCD_SERVER }} \
+            --auth-token ${{ secrets.ARGOCD_AUTH_TOKEN }} \
+            --grpc-web \
+            --refresh
           
-          argocd app get staging-app --refresh
           echo "✅ ArgoCD staging-app refreshed"
 
   build-and-push-prod:
@@ -544,11 +565,32 @@ jobs:
           yq eval '.spec.source.targetRevision = "main"' -i argocd-apps/prod-app.yaml
 
       - name: Commit and push
+        id: commit-changes
         run: |
           if git diff --quiet; then
             echo "⚠️ No changes"
+            echo "changed=false" >> $GITHUB_OUTPUT
           else
             git add k8s/prod/nodetodo.yaml argocd-apps/prod-app.yaml
             git commit -m "chore: update prod nodetodo image to ${{ needs.build-and-push-prod.outputs.image-tag }} [skip ci]"
             git push origin main
+            echo "changed=true" >> $GITHUB_OUTPUT
           fi
+
+      - name: Refresh ArgoCD Application
+        if: steps.commit-changes.outputs.changed == 'true'
+        run: |
+          if ! command -v argocd &> /dev/null; then
+            curl -sSL -o /tmp/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+            chmod +x /tmp/argocd
+            sudo mv /tmp/argocd /usr/local/bin/argocd
+          fi
+          
+          # Use token authentication
+          argocd app get prod-app \
+            --server ${{ secrets.ARGOCD_SERVER }} \
+            --auth-token ${{ secrets.ARGOCD_AUTH_TOKEN }} \
+            --grpc-web \
+            --refresh
+          
+          echo "✅ ArgoCD prod-app refreshed"

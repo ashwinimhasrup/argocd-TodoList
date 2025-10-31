@@ -105,10 +105,12 @@ jobs:
             echo "📝 Updating dev-app.yaml to track ${BRANCH_NAME}"
             yq eval '.spec.source.targetRevision = "'${BRANCH_NAME}'"' -i argocd-apps/dev-app.yaml
             APP_FILE="argocd-apps/dev-app.yaml"
+            APP_NAME="dev-app"
           elif [[ "${BRANCH_NAME}" == release/* ]]; then
             echo "📝 Updating staging-app.yaml to track ${BRANCH_NAME}"
             yq eval '.spec.source.targetRevision = "'${BRANCH_NAME}'"' -i argocd-apps/staging-app.yaml
             APP_FILE="argocd-apps/staging-app.yaml"
+            APP_NAME="staging-app"
           fi
 
           # Commit and push if changes were made
@@ -119,7 +121,32 @@ jobs:
             git commit -m "chore: setup ArgoCD to track ${BRANCH_NAME} [skip ci]"
             git push origin "${BRANCH_NAME}"
             echo "✅ ArgoCD configured to sync from ${BRANCH_NAME}"
+            echo "app_name=${APP_NAME}" >> $GITHUB_OUTPUT
           fi
+        id: update-argocd-app
+
+      - name: Refresh ArgoCD Application
+        if: steps.update-argocd-app.outputs.app_name != ''
+        run: |
+          # Install ArgoCD CLI if not present
+          if ! command -v argocd &> /dev/null; then
+            echo "📥 Installing ArgoCD CLI..."
+            curl -sSL -o /tmp/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+            chmod +x /tmp/argocd
+            sudo mv /tmp/argocd /usr/local/bin/argocd
+          fi
+          
+          # Login to ArgoCD
+          argocd login ${{ secrets.ARGO_SERVER_URL }} \
+            --username ${{ secrets.ARGO_USER }} \
+            --password ${{ secrets.ARGO_PASS }} \
+            --insecure
+          
+          # Refresh the application to pick up new targetRevision
+          echo "🔄 Refreshing ArgoCD app: ${{ steps.update-argocd-app.outputs.app_name }}"
+          argocd app get ${{ steps.update-argocd-app.outputs.app_name }} --refresh
+          
+          echo "✅ ArgoCD application refreshed successfully"
 
   build-for-pr:
     name: pull_request (CI only for PR)
@@ -237,14 +264,34 @@ jobs:
           yq eval '.spec.source.targetRevision = "${{ needs.build-and-push-dev.outputs.branch-name }}"' -i argocd-apps/dev-app.yaml
 
       - name: Commit and push changes
+        id: commit-changes
         run: |
           if git diff --quiet; then
             echo "⚠️ No changes detected"
+            echo "changed=false" >> $GITHUB_OUTPUT
           else
             git add k8s/dev/nodetodo.yaml argocd-apps/dev-app.yaml
             git commit -m "chore: update dev nodetodo image to ${{ needs.build-and-push-dev.outputs.image-tag }} [skip ci]"
             git push origin ${{ needs.build-and-push-dev.outputs.branch-name }}
+            echo "changed=true" >> $GITHUB_OUTPUT
           fi
+
+      - name: Refresh ArgoCD Application
+        if: steps.commit-changes.outputs.changed == 'true'
+        run: |
+          if ! command -v argocd &> /dev/null; then
+            curl -sSL -o /tmp/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+            chmod +x /tmp/argocd
+            sudo mv /tmp/argocd /usr/local/bin/argocd
+          fi
+          
+          argocd login ${{ secrets.ARGO_SERVER_URL }} \
+            --username ${{ secrets.ARGO_USER }} \
+            --password ${{ secrets.ARGO_PASS }} \
+            --insecure
+          
+          argocd app get dev-app --refresh
+          echo "✅ ArgoCD dev-app refreshed"
 
   build-and-push-qa:
     runs-on: self-hosted
@@ -400,14 +447,34 @@ jobs:
           yq eval '.spec.source.targetRevision = "${{ needs.build-and-push-staging.outputs.branch-name }}"' -i argocd-apps/staging-app.yaml
       
       - name: Commit and push
+        id: commit-changes
         run: |
           if git diff --quiet; then
             echo "⚠️ No changes"
+            echo "changed=false" >> $GITHUB_OUTPUT
           else
             git add k8s/staging/nodetodo.yaml argocd-apps/staging-app.yaml
             git commit -m "chore: update staging nodetodo image to ${{ needs.build-and-push-staging.outputs.image-tag }} [skip ci]"
             git push origin ${{ needs.build-and-push-staging.outputs.branch-name }}
+            echo "changed=true" >> $GITHUB_OUTPUT
           fi
+
+      - name: Refresh ArgoCD Application
+        if: steps.commit-changes.outputs.changed == 'true'
+        run: |
+          if ! command -v argocd &> /dev/null; then
+            curl -sSL -o /tmp/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+            chmod +x /tmp/argocd
+            sudo mv /tmp/argocd /usr/local/bin/argocd
+          fi
+          
+          argocd login ${{ secrets.ARGO_SERVER_URL }} \
+            --username ${{ secrets.ARGO_USER }} \
+            --password ${{ secrets.ARGO_PASS }} \
+            --insecure
+          
+          argocd app get staging-app --refresh
+          echo "✅ ArgoCD staging-app refreshed"
 
   build-and-push-prod:
     runs-on: self-hosted

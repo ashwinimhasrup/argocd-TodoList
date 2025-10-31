@@ -131,9 +131,11 @@ jobs:
           # Install ArgoCD CLI if not present
           if ! command -v argocd &> /dev/null; then
             echo "📥 Installing ArgoCD CLI..."
-            curl -sSL -o /tmp/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
-            chmod +x /tmp/argocd
-            sudo mv /tmp/argocd /usr/local/bin/argocd
+            mkdir -p $HOME/.local/bin
+            curl -sSL -o $HOME/.local/bin/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+            chmod +x $HOME/.local/bin/argocd
+            echo "$HOME/.local/bin" >> $GITHUB_PATH
+            export PATH=$HOME/.local/bin:$PATH
           fi
           
           # Login to ArgoCD
